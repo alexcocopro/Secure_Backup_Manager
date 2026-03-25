@@ -1098,23 +1098,28 @@ validate_password() {
     local password="$1"
     local length=${#password}
     
+    # Verificar longitud mínima
     if [[ $length -lt 8 ]]; then
         return 1
     fi
     
+    # Verificar mayúsculas
     if ! [[ "$password" =~ [A-Z] ]]; then
         return 1
     fi
     
+    # Verificar minúsculas
     if ! [[ "$password" =~ [a-z] ]]; then
         return 1
     fi
     
+    # Verificar números
     if ! [[ "$password" =~ [0-9] ]]; then
         return 1
     fi
     
-    if ! [[ "$password" =~ [!@#$%^&*()_+\-=\[\]{};':\"\\|,.<>\/?] ]]; then
+    # Verificar caracteres especiales (versión segura)
+    if [[ "$password" != *'!'* && "$password" != *'@'* && "$password" != *'#'* && "$password" != *'$'* && "$password" != *'%'* && "$password" != *'^'* && "$password" != *'&&'* && "$password" != *'('* && "$password" != *')'* && "$password" != *'_'* && "$password" != *'+'* && "$password" != *'-'* && "$password" != *'='* ]]; then
         return 1
     fi
     
@@ -3116,7 +3121,7 @@ run_backup() {
     
     # Buscar jobs de backup (no restore)
     while IFS= read -r line; do
-        if [[ $line =~ Name\ =\ \"(.+)\" ]] && [[ ! $line =~ Restore_ ]]; then
+        if [[ $line =~ Name[[:space:]]*=[[:space:]]*\"(.+)\" ]] && [[ ! $line =~ Restore_ ]]; then
             local job_name="${BASH_REMATCH[1]}"
             # Filtrar solo jobs de backup
             if [[ $job_name != "BackupLocalFiles" ]] || [[ ! -d "$CONFIG_DIR/jobs" ]]; then
@@ -4115,7 +4120,7 @@ configure_remote_backup() {
     fi
     
     # Verificar formato de IP o hostname
-    if ! [[ "$remote_host" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && ! [[ "$remote_host" =~ ^[a-zA-Z0-9][a-zA-Z0-9\-\.]*$ ]]; then
+    if ! [[ "$remote_host" =~ ^[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*$ ]] && ! [[ "$remote_host" =~ ^[a-zA-Z0-9][a-zA-Z0-9\-\.]*$ ]]; then
         echo -e "${COLOR_YELLOW}⚠ Invalid host format. Using anyway...${COLOR_RESET}"
     fi
     echo ""
