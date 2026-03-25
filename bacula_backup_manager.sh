@@ -59,7 +59,7 @@ REMOTE_TYPE="${REMOTE_TYPE:-ssh}"
 
 # --- Manejo de errores / Error handling ---
 error_exit() {
-    local message="$1"
+    local message="${1:-}"
     local code="${2:-1}"
     log_message "ERROR" "$message"
     echo -e "${COLOR_RED}✗ ERROR: $message${COLOR_RESET}" >&2
@@ -69,8 +69,8 @@ error_exit() {
 
 # --- Logging / Registro ---
 log_message() {
-    local level="$1"
-    local message="$2"
+    local level="${1:-INFO}"
+    local message="${2:-}"
     local timestamp
     timestamp=$(date '+%Y-%m-%d %H:%M:%S')
     
@@ -136,8 +136,8 @@ init_secure_storage() {
 
 # --- Guardar credencial segura / Save secure credential ---
 save_credential() {
-    local key="$1"
-    local value="$2"
+    local key="${1:-}"
+    local value="${2:-}"
     local credential_file="${3:-$ENV_FILE}"
     
     # Remover entrada anterior si existe / Remove previous entry if exists
@@ -157,7 +157,7 @@ save_credential() {
 
 # --- Cargar credencial segura / Load secure credential ---
 load_credential() {
-    local key="$1"
+    local key="${1:-}"
     local credential_file="${2:-$ENV_FILE}"
     
     if [[ -f "$credential_file" ]]; then
@@ -173,7 +173,7 @@ load_credential() {
 
 # --- Verificar si credencial existe / Check if credential exists ---
 credential_exists() {
-    local key="$1"
+    local key="${1:-}"
     local credential_file="${2:-$ENV_FILE}"
     
     if [[ -f "$credential_file" ]]; then
@@ -184,7 +184,7 @@ credential_exists() {
 
 # --- Configurar variables de entorno seguras / Setup secure environment variables ---
 setup_secure_env() {
-    local prefix="$1"
+    local prefix="${1:-}"
     
     if [[ -f "$ENV_FILE" ]]; then
         while IFS='=' read -r key value; do
@@ -226,9 +226,9 @@ generate_ssh_keys() {
 
 # --- Distribuir clave SSH a host remoto / Distribute SSH key to remote host ---
 distribute_ssh_key() {
-    local remote_host="$1"
-    local remote_user="$2"
-    local remote_password="$3"
+    local remote_host="${1:-}"
+    local remote_user="${2:-}"
+    local remote_password="${3:-}"
     local key_name="${4:-bacula_backup}"
     local key_path="${SSH_DIR}/${key_name}.pub"
     
@@ -288,8 +288,8 @@ distribute_ssh_key() {
 
 # --- Probar conexión SSH / Test SSH connection ---
 test_ssh_connection() {
-    local remote_host="$1"
-    local remote_user="$2"
+    local remote_host="${1:-}"
+    local remote_user="${2:-}"
     local key_name="${3:-bacula_backup}"
     local key_path="${SSH_DIR}/${key_name}"
     
@@ -320,7 +320,7 @@ detect_network_segment() {
 
 # --- Verificar conectividad de red / Verify network connectivity ---
 verify_network_connectivity() {
-    local target="$1"
+    local target="${1:-}"
     local port="${2:-22}"
     local timeout="${3:-5}"
     
@@ -370,7 +370,7 @@ show_banner() {
 
 # --- Función para traducciones / Translation function ---
 t() {
-    local key="$1"
+    local key="${1:-}"
     case "$key" in
         # Menú principal / Main menu
         "menu_title")
@@ -1071,7 +1071,7 @@ t() {
 
 # --- Mostrar spinner de progreso / Show progress spinner ---
 spinner() {
-    local pid=$1
+    local pid="${1:-}"
     local delay=0.1
     local spinstr='|/-\\'
     while kill -0 "$pid" 2>/dev/null; do
@@ -1086,8 +1086,8 @@ spinner() {
 
 # --- Barra de progreso / Progress bar ---
 progress_bar() {
-    local current=$1
-    local total=$2
+    local current="${1:-0}"
+    local total="${2:-100}"
     local width=50
     local percentage=$((current * 100 / total))
     local filled=$((width * current / total))
@@ -1101,7 +1101,7 @@ progress_bar() {
 
 # --- Validar contraseña / Validate password ---
 validate_password() {
-    local password="$1"
+    local password="${1:-}"
     local length=${#password}
     
     # Verificar longitud mínima
@@ -1139,7 +1139,7 @@ generate_password() {
 
 # --- Confirmar acción / Confirm action ---
 confirm() {
-    local message="$1"
+    local message="${1:-}"
     local response
     
     while true; do
@@ -1521,12 +1521,12 @@ EOF
 
 # --- Crear nuevo Job de respaldo / Create new backup job ---
 create_backup_job() {
-    local job_name="$1"
-    local job_description="$2"
-    local backup_path="$3"
-    local schedule_type="$4"
-    local retention="$5"
-    local include_paths=("${@:6}")
+    local job_name="${1:-}"
+    local job_description="${2:-}"
+    local backup_path="${3:-}"
+    local schedule_type="${4:-}"
+    local retention="${5:-}"
+    local include_paths=(${@:6})
     
     echo -e "${COLOR_BOLD}${COLOR_GREEN}═══════════════════════════════════════════════════════════════════════════${COLOR_RESET}"
     echo -e "${COLOR_BOLD}  CREATE NEW BACKUP JOB / CREAR NUEVO JOB DE RESPALDO${COLOR_RESET}"
@@ -1669,11 +1669,11 @@ create_backup_job() {
 
 # --- Guardar configuración de job / Save job configuration ---
 save_job_config() {
-    local job_name="$1"
-    local job_description="$2"
-    local backup_path="$3"
-    local schedule_type="$4"
-    local retention="$5"
+    local job_name="${1:-}"
+    local job_description="${2:-}"
+    local backup_path="${3:-}"
+    local schedule_type="${4:-}"
+    local retention="${5:-}"
     shift 5
     local include_paths=("$@")
     
@@ -1695,11 +1695,11 @@ EOF
 
 # --- Agregar job a configuración Bacula / Add job to Bacula configuration ---
 add_job_to_bacula_config() {
-    local job_name="$1"
-    local job_description="$2"
-    local backup_path="$3"
-    local schedule_type="$4"
-    local retention="$5"
+    local job_name="${1:-}"
+    local job_description="${2:-}"
+    local backup_path="${3:-}"
+    local schedule_type="${4:-}"
+    local retention="${5:-}"
     shift 5
     local include_paths=("$@")
     
@@ -1889,7 +1889,7 @@ delete_backup_job() {
 
 # --- Abrir puertos de Bacula / Open Bacula ports ---
 open_bacula_ports() {
-    local action="$1"  # "backup" o "close"
+    local action="${1:-}"  # "backup" o "close"
     
     # Puertos estándar de Bacula
     local ports=("9101" "9102" "9103" "9104")
@@ -2301,10 +2301,10 @@ Developed by: $AUTHOR
 
 # --- Enviar notificación de backup / Send backup notification ---
 send_backup_notification() {
-    local job_name="$1"
-    local job_status="$2"  # "success" o "failed"
-    local job_id="$3"
-    local error_message="$4"
+    local job_name="${1:-}"
+    local job_status="${2:-}"
+    local job_id="${3:-}"
+    local error_message="${4:-}"
     
     local email_config="$CONFIG_DIR/email.conf"
     
@@ -2413,9 +2413,9 @@ Email: $EMAIL_FROM
 
 # --- Enviar notificación de eliminación por retención / Send retention notification ---
 send_retention_notification() {
-    local job_name="$1"
-    local deleted_volumes="$2"
-    local retention_policy="$3"
+    local job_name="${1:-}"
+    local deleted_volumes="${2:-}"
+    local retention_policy="${3:-}"
     
     local email_config="$CONFIG_DIR/email.conf"
     
@@ -2778,7 +2778,7 @@ configure_bacula_legacy() {
 
 # --- Obtener descripción de horario / Get schedule description ---
 get_schedule_description() {
-    case $1 in
+    case ${1:-} in
         1) [[ "$LANG" == "en" ]] && echo "Daily at 02:00 AM" || echo "Diario a las 02:00 AM" ;;
         2) [[ "$LANG" == "en" ]] && echo "Weekly Sundays 02:00 AM" || echo "Semanal Domingos 02:00 AM" ;;
         3) [[ "$LANG" == "en" ]] && echo "Monthly 1st day 02:00 AM" || echo "Mensual día 1 a las 02:00 AM" ;;
@@ -2788,7 +2788,7 @@ get_schedule_description() {
 
 # --- Obtener descripción de retención / Get retention description ---
 get_retention_description() {
-    case $1 in
+    case ${1:-} in
         1) [[ "$LANG" == "en" ]] && echo "30 days" || echo "30 días" ;;
         2) [[ "$LANG" == "en" ]] && echo "90 days" || echo "90 días" ;;
         3) [[ "$LANG" == "en" ]] && echo "1 year" || echo "1 año" ;;
@@ -2821,11 +2821,11 @@ configure_database_backup() {
 
 # --- Generar configuración Bacula / Generate Bacula configuration ---
 generate_bacula_config() {
-    local director_name="$1"
-    local password="$2"
-    local backup_path="$3"
-    local schedule_type="$4"
-    local retention="$5"
+    local director_name="${1:-}"
+    local password="${2:-}"
+    local backup_path="${3:-}"
+    local schedule_type="${4:-}"
+    local retention="${5:-}"
     shift 5
     local include_paths=("$@")
     
@@ -3182,7 +3182,7 @@ run_backup() {
 
 # --- Ejecutar un job específico / Run single backup job ---
 run_single_backup_job() {
-    local job_name="$1"
+    local job_name="${1:-}"
     
     # Obtener política de puertos
     local port_policy
@@ -4225,10 +4225,10 @@ EOF
 
 # --- Configurar almacenamiento remoto Bacula / Configure remote Bacula storage ---
 configure_remote_storage() {
-    local remote_host="$1"
-    local remote_user="$2"
-    local remote_path="$3"
-    local connection_type="$4"
+    local remote_host="${1:-}"
+    local remote_user="${2:-}"
+    local remote_path="${3:-}"
+    local connection_type="${4:-}"
     
     # Crear configuración de dispositivo remoto
     local storage_config="/etc/bacula/bacula-sd-remote.conf"
@@ -4290,8 +4290,8 @@ EOF
 
 # --- Configurar túnel SSH / Setup SSH tunnel ---
 setup_ssh_tunnel() {
-    local remote_host="$1"
-    local remote_user="$2"
+    local remote_host="${1:-}"
+    local remote_user="${2:-}"
     local local_port="${3:-9104}"
     local remote_port="${4:-9103}"
     
@@ -4332,7 +4332,7 @@ EOF
 
 # --- Actualizar Director para soporte remoto / Update Director for remote support ---
 update_director_for_remote() {
-    local storage_config="$1"
+    local storage_config="${1:-}"
     
     # Agregar @include al bacula-dir.conf si no existe
     if ! grep -q "@$storage_config" /etc/bacula/bacula-dir.conf 2>/dev/null; then
