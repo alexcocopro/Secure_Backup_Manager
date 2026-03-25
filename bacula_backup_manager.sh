@@ -1415,9 +1415,11 @@ install_bacula() {
     wait $!
     
     # Iniciar servicios / Start services
-    systemctl enable bacula-dir bacula-sd bacula-fd &
+    systemctl daemon-reload 2>/dev/null || true
+    systemctl enable bacula-dir bacula-sd bacula-fd 2>/dev/null || true
+    systemctl start bacula-dir bacula-sd bacula-fd 2>/dev/null || true &
     spinner $!
-    wait $!
+    wait $! || true
     
     echo ""
     echo -e "${COLOR_GREEN}✓ $(t "install_success")${COLOR_RESET}"
