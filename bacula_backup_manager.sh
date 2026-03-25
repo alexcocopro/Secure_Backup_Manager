@@ -2261,7 +2261,7 @@ configure_email_notifications() {
     echo ""
     
     # Servidor SMTP
-    local smtp_server
+    local smtp_server=""
     if [[ -f "$email_config" ]]; then
         smtp_server=$(grep "SMTP_SERVER=" "$email_config" 2>/dev/null | cut -d= -f2)
     fi
@@ -2269,7 +2269,7 @@ configure_email_notifications() {
     smtp_server=${input_server:-$smtp_server}
     
     # Puerto SMTP
-    local smtp_port
+    local smtp_port=""
     if [[ -f "$email_config" ]]; then
         smtp_port=$(grep "SMTP_PORT=" "$email_config" 2>/dev/null | cut -d= -f2)
     fi
@@ -2278,7 +2278,7 @@ configure_email_notifications() {
     smtp_port=${input_port:-$smtp_port}
     
     # Usuario SMTP
-    local smtp_user
+    local smtp_user=""
     if [[ -f "$email_config" ]]; then
         smtp_user=$(grep "SMTP_USER=" "$email_config" 2>/dev/null | cut -d= -f2)
     fi
@@ -2286,7 +2286,7 @@ configure_email_notifications() {
     smtp_user=${input_user:-$smtp_user}
     
     # Contraseña SMTP
-    local smtp_password
+    local smtp_password=""
     if [[ -f "$email_config" ]]; then
         smtp_password=$(load_credential "SMTP_PASSWORD" "$email_config")
     fi
@@ -2297,7 +2297,7 @@ configure_email_notifications() {
     echo ""
     
     # Email de destino
-    local email_to
+    local email_to=""
     if [[ -f "$email_config" ]]; then
         email_to=$(grep "EMAIL_TO=" "$email_config" 2>/dev/null | cut -d= -f2)
     fi
@@ -2305,16 +2305,16 @@ configure_email_notifications() {
     email_to=${input_email:-$email_to}
     
     # Email de origen
-    local email_from
+    local email_from=""
     if [[ -f "$email_config" ]]; then
         email_from=$(grep "EMAIL_FROM=" "$email_config" 2>/dev/null | cut -d= -f2)
     fi
     [[ -z "$email_from" ]] && email_from="bacula@$(hostname -f)"
     read -rp "   From Email / Email de origen [$email_from]: " input_from
-    email_from=${input_from:-$email_from}
+    email_from=${input_user:-$email_from}
     
     # Usar TLS
-    local use_tls
+    local use_tls=""
     if [[ -f "$email_config" ]]; then
         use_tls=$(grep "USE_TLS=" "$email_config" 2>/dev/null | cut -d= -f2)
     fi
