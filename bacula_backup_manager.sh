@@ -4543,6 +4543,12 @@ main() {
 
 # --- Manejar argumentos de línea de comandos / Handle command line arguments ---
 handle_args() {
+    if [[ $# -eq 0 ]]; then
+        # No arguments provided, start main function
+        main
+        return
+    fi
+    
     case "$1" in
         --install-command)
             install_command
