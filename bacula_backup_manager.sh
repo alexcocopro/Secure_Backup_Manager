@@ -310,9 +310,34 @@ detect_network_segment() {
     if [[ -n "$ip_info" ]]; then
         local ip_cidr
         ip_cidr=$(echo "$ip_info" | awk '{print $2}')
-        local network
-        network=$(ipcalc -n "$ip_cidr" 2>/dev/null | cut -d= -f2)
-        echo "$network"
+        local ip=$(echo "$ip_cidr" | cut -d/ -f1)
+        local prefix=$(echo "$ip_cidr" | cut -d/ -f2)
+        
+        # Calcular red sin usar ipcalc
+        if [[ -n "$ip" && -n "$prefix" ]]; then
+            # Convertir IP a array
+            IFS='.' read -ra ADDR <<< "$ip"
+            local network=""
+            
+            # Calcular máscara de red según prefix
+            local mask=$((0xFFFFFFFF << (32 - prefix)))
+            
+            # Aplicar máscara a cada octeto
+            for i in {0..3}; do
+                local octet=${ADDR[$i]}
+                local mask_octet=$((mask >> (24 - i*8) & 0xFF))
+                local net_octet=$((octet & mask_octet))
+                if [[ -z "$network" ]]; then
+                    network="$net_octet"
+                else
+                    network="$network.$net_octet"
+                fi
+            done
+            
+            echo "$network"
+        else
+            echo "unknown"
+        fi
     else
         echo "unknown"
     fi
@@ -326,20 +351,57 @@ verify_network_connectivity() {
     
     echo -e "${COLOR_CYAN}$(t "msg_testing_connectivity") $target:$port...${COLOR_RESET}"
     
-    # Test ICMP ping
-    if ping -c 1 -W "$timeout" "$target" &>/dev/null; then
-        echo -e "  ${COLOR_GREEN}✓ $(t "msg_ping_success")${COLOR_RESET}"
-    else
-        echo -e "  ${COLOR_YELLOW}⚠ $(t "msg_ping_failed")${COLOR_RESET}"
+    # Validar parámetros
+    if [[ -z "$target" ]]; then
+        echo -e "  ${COLOR_RED}✗ Invalid target${COLOR_RESET}"
+        return 1
     fi
     
-    # Test TCP connection
-    if timeout "$timeout" bash -c "</dev/tcp/$target/$port" 2>/dev/null; then
+    if [[ -z "$port" || "$port" -lt 1 || "$port" -gt 65535 ]]; then
+        echo -e "  ${COLOR_RED}✗ Invalid port: $port${COLOR_RESET}"
+        return 1
+    fi
+    
+    # Test ICMP ping (puede fallar por firewall)
+    if command -v ping &>/dev/null; then
+        if ping -c 1 -W "$timeout" "$target" &>/dev/null; then
+            echo -e "  ${COLOR_GREEN}✓ $(t "msg_ping_success")${COLOR_RESET}"
+        else
+            echo -e "  ${COLOR_YELLOW}⚠ $(t "msg_ping_failed")${COLOR_RESET}"
+        fi
+    else
+        echo -e "  ${COLOR_YELLOW}⚠ ping command not available${COLOR_RESET}"
+    fi
+    
+    # Test TCP connection (método principal)
+    local tcp_ok=false
+    
+    # Método 1: timeout con /dev/tcp (bash builtin)
+    if command -v timeout &>/dev/null; then
+        if timeout "$timeout" bash -c "</dev/tcp/$target/$port" 2>/dev/null; then
+            tcp_ok=true
+        fi
+    fi
+    
+    # Método 2: nc (netcat) si el anterior falla
+    if [[ "$tcp_ok" == false ]] && command -v nc &>/dev/null; then
+        if echo "" | nc -w "$timeout" "$target" "$port" &>/dev/null; then
+            tcp_ok=true
+        fi
+    fi
+    
+    # Método 3: telnet como último recurso
+    if [[ "$tcp_ok" == false ]] && command -v telnet &>/dev/null; then
+        if echo "quit" | timeout "$timeout" telnet "$target" "$port" &>/dev/null; then
+            tcp_ok=true
+        fi
+    fi
+    
+    if [[ "$tcp_ok" == true ]]; then
         echo -e "  ${COLOR_GREEN}✓ $(t "msg_port_reachable")${COLOR_RESET}"
         return 0
     else
         echo -e "  ${COLOR_RED}✗ $(t "msg_port_unreachable")${COLOR_RESET}"
-        
         echo -e "  ${COLOR_YELLOW}$(t "msg_check_firewall")${COLOR_RESET}"
         return 1
     fi
@@ -1249,11 +1311,44 @@ check_postgresql_compatibility() {
 
 # --- Verificar si Bacula está instalado / Check if Bacula is installed ---
 is_bacula_installed() {
-    if command -v bacula-dir &> /dev/null && \
-       command -v bacula-sd &> /dev/null && \
-       command -v bacula-fd &> /dev/null; then
+    # Verificar múltiples posibles nombres de comandos según la distro
+    local has_director=false
+    local has_storage=false
+    local has_client=false
+    
+    # Verificar director (varios nombres posibles)
+    if command -v bacula-dir &> /dev/null || \
+       command -v bacula-director &> /dev/null || \
+       command -v bacula-dir-sqlite3 &> /dev/null || \
+       command -v bacula-dir-postgresql &> /dev/null; then
+        has_director=true
+    fi
+    
+    # Verificar storage daemon
+    if command -v bacula-sd &> /dev/null || \
+       command -v bacula-storage &> /dev/null; then
+        has_storage=true
+    fi
+    
+    # Verificar file daemon (cliente)
+    if command -v bacula-fd &> /dev/null || \
+       command -v bacula-client &> /dev/null || \
+       command -v bacula-fd-sqlite3 &> /dev/null; then
+        has_client=true
+    fi
+    
+    # También verificar si existe el archivo de configuración
+    if [[ -f /etc/bacula/bacula-dir.conf ]] && \
+       [[ -f /etc/bacula/bacula-sd.conf ]] && \
+       [[ -f /etc/bacula/bacula-fd.conf ]]; then
+        # Si existen configs, considerar instalado aunque los comandos tengan nombres diferentes
         return 0
     fi
+    
+    if [[ "$has_director" == true ]] && [[ "$has_storage" == true ]] && [[ "$has_client" == true ]]; then
+        return 0
+    fi
+    
     return 1
 }
 
@@ -1414,12 +1509,35 @@ install_bacula() {
     spinner $!
     wait $!
     
-    # Iniciar servicios / Start services
+    # Iniciar servicios / Start services - intentar múltiples nombres
     systemctl daemon-reload 2>/dev/null || true
-    systemctl enable bacula-dir bacula-sd bacula-fd 2>/dev/null || true
-    systemctl start bacula-dir bacula-sd bacula-fd 2>/dev/null || true &
-    spinner $!
-    wait $! || true
+    
+    echo -e "${COLOR_CYAN}Starting Bacula services...${COLOR_RESET}"
+    
+    # Habilitar servicios (intentar con nombres estándar primero)
+    systemctl enable bacula-dir bacula-sd bacula-fd 2>/dev/null || \
+    systemctl enable bacula-director bacula-sd bacula-client 2>/dev/null || true
+    
+    # Iniciar servicios
+    if systemctl start bacula-dir bacula-sd bacula-fd 2>/dev/null; then
+        echo -e "  ${COLOR_GREEN}✓ Services started (standard names)${COLOR_RESET}"
+    elif systemctl start bacula-director bacula-sd bacula-client 2>/dev/null; then
+        echo -e "  ${COLOR_GREEN}✓ Services started (alternative names)${COLOR_RESET}"
+    else
+        echo -e "  ${COLOR_YELLOW}⚠ Some services failed to start${COLOR_RESET}"
+        # Intentar individualmente
+        for svc in bacula-dir bacula-director; do
+            if systemctl is-enabled "$svc" 2>/dev/null; then
+                systemctl start "$svc" 2>/dev/null && echo -e "    ${COLOR_GREEN}✓ $svc started${COLOR_RESET}"
+            fi
+        done
+        systemctl start bacula-sd 2>/dev/null && echo -e "    ${COLOR_GREEN}✓ bacula-sd started${COLOR_RESET}"
+        for svc in bacula-fd bacula-client; do
+            if systemctl is-enabled "$svc" 2>/dev/null; then
+                systemctl start "$svc" 2>/dev/null && echo -e "    ${COLOR_GREEN}✓ $svc started${COLOR_RESET}"
+            fi
+        done
+    fi
     
     echo ""
     echo -e "${COLOR_GREEN}✓ $(t "install_success")${COLOR_RESET}"
@@ -1801,8 +1919,15 @@ Job {
 }
 EOF
     
-    # Reiniciar servicios para aplicar cambios
-    systemctl restart bacula-dir 2>/dev/null || true
+    # Reiniciar servicios para aplicar cambios - intentar múltiples nombres
+    echo -e "${COLOR_CYAN}Restarting Director service to apply changes...${COLOR_RESET}"
+    if systemctl restart bacula-dir 2>/dev/null; then
+        echo -e "  ${COLOR_GREEN}✓ bacula-dir restarted${COLOR_RESET}"
+    elif systemctl restart bacula-director 2>/dev/null; then
+        echo -e "  ${COLOR_GREEN}✓ bacula-director restarted${COLOR_RESET}"
+    else
+        echo -e "  ${COLOR_YELLOW}⚠ Director service restart failed${COLOR_RESET}"
+    fi
 }
 
 # --- Listar jobs existentes / List existing jobs ---
@@ -1873,8 +1998,15 @@ delete_backup_job() {
         sed -i "/# Schedule for job: $job_name/,/^$/d" /etc/bacula/bacula-dir.conf
         sed -i "/# Restore job for: $job_name/,/^$/d" /etc/bacula/bacula-dir.conf
         
-        # Reiniciar servicios
-        systemctl restart bacula-dir 2>/dev/null || true
+        # Reiniciar servicios - intentar múltiples nombres
+        echo -e "${COLOR_CYAN}Restarting Director service to apply changes...${COLOR_RESET}"
+        if systemctl restart bacula-dir 2>/dev/null; then
+            echo -e "  ${COLOR_GREEN}✓ bacula-dir restarted${COLOR_RESET}"
+        elif systemctl restart bacula-director 2>/dev/null; then
+            echo -e "  ${COLOR_GREEN}✓ bacula-director restarted${COLOR_RESET}"
+        else
+            echo -e "  ${COLOR_YELLOW}⚠ Director service restart failed${COLOR_RESET}"
+        fi
         
         echo -e "${COLOR_GREEN}✓ Job '$job_name' deleted successfully!${COLOR_RESET}"
         log_message "INFO" "Backup job deleted: $job_name"
@@ -3078,8 +3210,29 @@ EOF
     mkdir -p /var/log/bacula
     chown bacula:bacula /var/log/bacula
     
-    # Reiniciar servicios / Restart services
-    systemctl restart bacula-dir bacula-sd bacula-fd
+    # Reiniciar servicios / Restart services - intentar múltiples nombres
+    echo -e "${COLOR_CYAN}Restarting Bacula services...${COLOR_RESET}"
+    
+    # Intentar con nombres estándar primero
+    if systemctl restart bacula-dir bacula-sd bacula-fd 2>/dev/null; then
+        echo -e "  ${COLOR_GREEN}✓ Services restarted (standard names)${COLOR_RESET}"
+    elif systemctl restart bacula-director bacula-sd bacula-client 2>/dev/null; then
+        echo -e "  ${COLOR_GREEN}✓ Services restarted (alternative names)${COLOR_RESET}"
+    else
+        echo -e "  ${COLOR_YELLOW}⚠ Some services failed to restart${COLOR_RESET}"
+        # Intentar individualmente
+        for svc in bacula-dir bacula-director; do
+            if systemctl is-enabled "$svc" 2>/dev/null; then
+                systemctl restart "$svc" 2>/dev/null && echo -e "    ${COLOR_GREEN}✓ $svc restarted${COLOR_RESET}"
+            fi
+        done
+        systemctl restart bacula-sd 2>/dev/null && echo -e "    ${COLOR_GREEN}✓ bacula-sd restarted${COLOR_RESET}"
+        for svc in bacula-fd bacula-client; do
+            if systemctl is-enabled "$svc" 2>/dev/null; then
+                systemctl restart "$svc" 2>/dev/null && echo -e "    ${COLOR_GREEN}✓ $svc restarted${COLOR_RESET}"
+            fi
+        done
+    fi
     
     # Guardar configuración del manager / Save manager config
     cat > "$CONFIG_DIR/manager.conf" << EOF
@@ -3115,9 +3268,37 @@ run_backup() {
     log_message "INFO" "Starting manual backup"
     
     # Verificar que los servicios estén corriendo / Check services running
-    if ! systemctl is-active --quiet bacula-dir; then
+    local services_need_start=false
+    
+    # Verificar director con múltiples nombres
+    local director_running=false
+    for svc in bacula-dir bacula-director; do
+        if systemctl is-active --quiet "$svc" 2>/dev/null; then
+            director_running=true
+            break
+        fi
+    done
+    
+    # Verificar storage
+    local storage_running=false
+    if systemctl is-active --quiet bacula-sd 2>/dev/null; then
+        storage_running=true
+    fi
+    
+    # Verificar cliente con múltiples nombres
+    local client_running=false
+    for svc in bacula-fd bacula-client; do
+        if systemctl is-active --quiet "$svc" 2>/dev/null; then
+            client_running=true
+            break
+        fi
+    done
+    
+    if [[ "$director_running" == false ]] || [[ "$storage_running" == false ]] || [[ "$client_running" == false ]]; then
         echo -e "${COLOR_YELLOW}⚠ $(t "warning"): $(t "msg_starting_services")${COLOR_RESET}"
-        systemctl start bacula-dir bacula-sd bacula-fd
+        # Intentar iniciar con nombres estándar
+        systemctl start bacula-dir bacula-sd bacula-fd 2>/dev/null || \
+        systemctl start bacula-director bacula-sd bacula-client 2>/dev/null || true
         sleep 2
     fi
     
@@ -3445,16 +3626,41 @@ view_status() {
         return
     fi
     
-    # Estado de servicios / Services status
+    # Estado de servicios / Services status - verificar múltiples nombres posibles
     echo -e "${COLOR_BOLD}$(t "msg_service_status")${COLOR_RESET}"
-    local services=("bacula-dir" "bacula-sd" "bacula-fd")
-    for service in "${services[@]}"; do
-        if systemctl is-active --quiet "$service"; then
-            echo -e "  ${COLOR_GREEN}✓ $service: $(t "msg_running")${COLOR_RESET}"
-        else
-            echo -e "  ${COLOR_RED}✗ $service: $(t "msg_stopped")${COLOR_RESET}"
+    
+    # Verificar director con múltiples nombres posibles
+    local director_running=false
+    for svc in bacula-dir bacula-director; do
+        if systemctl is-active --quiet "$svc" 2>/dev/null; then
+            director_running=true
+            echo -e "  ${COLOR_GREEN}✓ $svc: $(t "msg_running")${COLOR_RESET}"
+            break
         fi
     done
+    if [[ "$director_running" == false ]]; then
+        echo -e "  ${COLOR_RED}✗ bacula-dir/director: $(t "msg_stopped")${COLOR_RESET}"
+    fi
+    
+    # Verificar storage daemon
+    if systemctl is-active --quiet bacula-sd 2>/dev/null; then
+        echo -e "  ${COLOR_GREEN}✓ bacula-sd: $(t "msg_running")${COLOR_RESET}"
+    else
+        echo -e "  ${COLOR_RED}✗ bacula-sd: $(t "msg_stopped")${COLOR_RESET}"
+    fi
+    
+    # Verificar file daemon (cliente) con múltiples nombres
+    local client_running=false
+    for svc in bacula-fd bacula-client; do
+        if systemctl is-active --quiet "$svc" 2>/dev/null; then
+            client_running=true
+            echo -e "  ${COLOR_GREEN}✓ $svc: $(t "msg_running")${COLOR_RESET}"
+            break
+        fi
+    done
+    if [[ "$client_running" == false ]]; then
+        echo -e "  ${COLOR_RED}✗ bacula-fd/client: $(t "msg_stopped")${COLOR_RESET}"
+    fi
     echo ""
     
     # Estado de Jobs configurados / Configured jobs status
@@ -3659,7 +3865,32 @@ test_configuration() {
     
     # Test 3: Verificar servicios / Check services
     echo -n "  $(t "msg_checking_services") "
-    if systemctl is-active --quiet bacula-dir && systemctl is-active --quiet bacula-sd && systemctl is-active --quiet bacula-fd; then
+    local director_ok=false
+    local storage_ok=false
+    local client_ok=false
+    
+    # Verificar director con múltiples nombres
+    for svc in bacula-dir bacula-director; do
+        if systemctl is-active --quiet "$svc" 2>/dev/null; then
+            director_ok=true
+            break
+        fi
+    done
+    
+    # Verificar storage
+    if systemctl is-active --quiet bacula-sd 2>/dev/null; then
+        storage_ok=true
+    fi
+    
+    # Verificar cliente con múltiples nombres
+    for svc in bacula-fd bacula-client; do
+        if systemctl is-active --quiet "$svc" 2>/dev/null; then
+            client_ok=true
+            break
+        fi
+    done
+    
+    if [[ "$director_ok" == true ]] && [[ "$storage_ok" == true ]] && [[ "$client_ok" == true ]]; then
         echo -e "${COLOR_GREEN}✓${COLOR_RESET}"
         ((tests_passed++))
     else
@@ -3878,18 +4109,74 @@ view_full_config() {
     fi
     echo ""
     
-    # Servicios
+    # Servicios - verificar múltiples posibles nombres de servicios
     echo -e "${COLOR_BOLD}${COLOR_YELLOW}$(t "config_services")${COLOR_RESET}"
-    local services=("bacula-dir" "bacula-sd" "bacula-fd")
-    for service in "${services[@]}"; do
-        if systemctl is-active --quiet "$service" 2>/dev/null; then
+    
+    # Mapear posibles nombres de servicios según distro
+    declare -A service_names
+    service_names[director]="bacula-dir bacula-director"
+    service_names[storage]="bacula-sd bacula-storage"
+    service_names[client]="bacula-fd bacula-client bacula-filedaemon"
+    
+    local running_services=0
+    local total_services=3
+    
+    # Verificar servicio director
+    local director_running=false
+    local director_name=""
+    for svc in ${service_names[director]}; do
+        if systemctl is-active --quiet "$svc" 2>/dev/null; then
+            director_running=true
+            director_name="$svc"
+            ((running_services++))
             local pid
-            pid=$(systemctl show "$service" --property=MainPID 2>/dev/null | cut -d= -f2)
-            echo -e "  ${COLOR_GREEN}✓ $service${COLOR_RESET}: $(t "running") (PID: $pid)"
-        else
-            echo -e "  ${COLOR_RED}✗ $service${COLOR_RESET}: $(t "stopped")"
+            pid=$(systemctl show "$svc" --property=MainPID 2>/dev/null | cut -d= -f2)
+            echo -e "  ${COLOR_GREEN}✓ $svc${COLOR_RESET}: $(t "running") (PID: $pid)"
+            break
         fi
     done
+    if [[ "$director_running" == false ]]; then
+        echo -e "  ${COLOR_RED}✗ bacula-dir/director${COLOR_RESET}: $(t "stopped")"
+    fi
+    
+    # Verificar servicio storage
+    local storage_running=false
+    for svc in ${service_names[storage]}; do
+        if systemctl is-active --quiet "$svc" 2>/dev/null; then
+            storage_running=true
+            ((running_services++))
+            local pid
+            pid=$(systemctl show "$svc" --property=MainPID 2>/dev/null | cut -d= -f2)
+            echo -e "  ${COLOR_GREEN}✓ $svc${COLOR_RESET}: $(t "running") (PID: $pid)"
+            break
+        fi
+    done
+    if [[ "$storage_running" == false ]]; then
+        echo -e "  ${COLOR_RED}✗ bacula-sd${COLOR_RESET}: $(t "stopped")"
+    fi
+    
+    # Verificar servicio cliente
+    local client_running=false
+    for svc in ${service_names[client]}; do
+        if systemctl is-active --quiet "$svc" 2>/dev/null; then
+            client_running=true
+            ((running_services++))
+            local pid
+            pid=$(systemctl show "$svc" --property=MainPID 2>/dev/null | cut -d= -f2)
+            echo -e "  ${COLOR_GREEN}✓ $svc${COLOR_RESET}: $(t "running") (PID: $pid)"
+            break
+        fi
+    done
+    if [[ "$client_running" == false ]]; then
+        echo -e "  ${COLOR_RED}✗ bacula-fd/client${COLOR_RESET}: $(t "stopped")"
+    fi
+    
+    # Resumen de servicios
+    if [[ $running_services -eq $total_services ]]; then
+        echo -e "  ${COLOR_GREEN}✓ All services running ($running_services/$total_services)${COLOR_RESET}"
+    elif [[ $running_services -gt 0 ]]; then
+        echo -e "  ${COLOR_YELLOW}⚠ Some services running ($running_services/$total_services)${COLOR_RESET}"
+    fi
     echo ""
     
     # Configuración local
