@@ -45,7 +45,8 @@ declare -r COLOR_BOLD='\033[1m'
 declare -r COLOR_DIM='\033[2m'
 
 # Variables de idioma / Language variables
-LANG="${LANG:-es}"
+# NOTA: Se usa APP_LANG para evitar colisión con la variable de sistema LANG (ej. es_ES.UTF-8)
+APP_LANG="${APP_LANG:-es}"
 
 # Variables de conexión remota / Remote connection variables
 REMOTE_MODE="${REMOTE_MODE:-false}"
@@ -88,7 +89,7 @@ trap cleanup EXIT INT TERM
 # --- Verificar root / Check root ---
 check_root() {
     if [[ $EUID -ne 0 ]]; then
-        if [[ "$LANG" == "en" ]]; then
+        if [[ "$APP_LANG" == "en" ]]; then
             error_exit "This script must be run as root (use sudo)"
         else
             error_exit "Este script debe ejecutarse como root (use sudo)"
@@ -102,7 +103,7 @@ check_lock() {
         local pid
         pid=$(cat "$LOCK_FILE" 2>/dev/null) || true
         if kill -0 "$pid" 2>/dev/null; then
-            if [[ "$LANG" == "en" ]]; then
+            if [[ "$APP_LANG" == "en" ]]; then
                 error_exit "Another instance is running (PID: $pid)"
             else
                 error_exit "Otra instancia está en ejecución (PID: $pid)"
@@ -241,7 +242,7 @@ distribute_ssh_key() {
     # Verificar conectividad / Check connectivity
     if ! ping -c 1 -W 3 "$remote_host" &>/dev/null; then
         echo -e "${COLOR_YELLOW}⚠ $(t "msg_host_unreachable") $remote_host${COLOR_RESET}"
-        if [[ "$LANG" == "en" ]]; then
+        if [[ "$APP_LANG" == "en" ]]; then
             echo "Please verify network connectivity (LAN/VLAN)"
         else
             echo "Por favor verifique la conectividad de red (LAN/VLAN)"
@@ -436,727 +437,749 @@ t() {
     case "$key" in
         # Menú principal / Main menu
         "menu_title")
-            [[ "$LANG" == "en" ]] && echo "MAIN MENU" || echo "MENÚ PRINCIPAL"
+            [[ "$APP_LANG" == "en" ]] && echo "MAIN MENU" || echo "MENÚ PRINCIPAL"
             ;;
         "menu_install")
-            [[ "$LANG" == "en" ]] && echo "Install & Configure Bacula" || echo "Instalar y Configurar Bacula"
+            [[ "$APP_LANG" == "en" ]] && echo "Install & Configure Bacula" || echo "Instalar y Configurar Bacula"
             ;;
         "menu_backup")
-            [[ "$LANG" == "en" ]] && echo "Run Backup Job" || echo "Ejecutar Trabajo de Respaldo"
+            [[ "$APP_LANG" == "en" ]] && echo "Run Backup Job" || echo "Ejecutar Trabajo de Respaldo"
             ;;
         "menu_restore")
-            [[ "$LANG" == "en" ]] && echo "Restore from Backup" || echo "Restaurar desde Respaldo"
+            [[ "$APP_LANG" == "en" ]] && echo "Restore from Backup" || echo "Restaurar desde Respaldo"
             ;;
         "menu_status")
-            [[ "$LANG" == "en" ]] && echo "View Backup Status" || echo "Ver Estado de Respaldos"
+            [[ "$APP_LANG" == "en" ]] && echo "View Backup Status" || echo "Ver Estado de Respaldos"
             ;;
         "menu_configure")
-            [[ "$LANG" == "en" ]] && echo "Reconfigure System" || echo "Reconfigurar Sistema"
+            [[ "$APP_LANG" == "en" ]] && echo "Reconfigure System" || echo "Reconfigurar Sistema"
             ;;
         "menu_logs")
-            [[ "$LANG" == "en" ]] && echo "View Logs" || echo "Ver Logs"
+            [[ "$APP_LANG" == "en" ]] && echo "View Logs" || echo "Ver Logs"
             ;;
         "menu_test")
-            [[ "$LANG" == "en" ]] && echo "Test Configuration" || echo "Probar Configuración"
+            [[ "$APP_LANG" == "en" ]] && echo "Test Configuration" || echo "Probar Configuración"
             ;;
         "menu_language")
-            [[ "$LANG" == "en" ]] && echo "Change Language (Cambiar Idioma)" || echo "Cambiar Idioma (Change Language)"
+            [[ "$APP_LANG" == "en" ]] && echo "Change Language (Cambiar Idioma)" || echo "Cambiar Idioma (Change Language)"
             ;;
         "menu_exit")
-            [[ "$LANG" == "en" ]] && echo "Exit" || echo "Salir"
+            [[ "$APP_LANG" == "en" ]] && echo "Exit" || echo "Salir"
             ;;
         "menu_email_status")
-            [[ "$LANG" == "en" ]] && echo "Email Notifications Status" || echo "Estado de Notificaciones por Email"
+            [[ "$APP_LANG" == "en" ]] && echo "Email Notifications Status" || echo "Estado de Notificaciones por Email"
             ;;
         "menu_port_management")
-            [[ "$LANG" == "en" ]] && echo "Port Management Status" || echo "Estado de Gestión de Puertos"
+            [[ "$APP_LANG" == "en" ]] && echo "Port Management Status" || echo "Estado de Gestión de Puertos"
             ;;
         "menu_remote")
-            [[ "$LANG" == "en" ]] && echo "Remote Backup Configuration" || echo "Configuración de Respaldo Remoto"
+            [[ "$APP_LANG" == "en" ]] && echo "Remote Backup Configuration" || echo "Configuración de Respaldo Remoto"
             ;;
         "menu_ssh_manage")
-            [[ "$LANG" == "en" ]] && echo "Manage SSH Keys" || echo "Gestionar Claves SSH"
+            [[ "$APP_LANG" == "en" ]] && echo "Manage SSH Keys" || echo "Gestionar Claves SSH"
             ;;
         "menu_network_test")
-            [[ "$LANG" == "en" ]] && echo "Test Network Connectivity" || echo "Probar Conectividad de Red"
+            [[ "$APP_LANG" == "en" ]] && echo "Test Network Connectivity" || echo "Probar Conectividad de Red"
             ;;
         "select_option")
-            [[ "$LANG" == "en" ]] && echo "Select an option" || echo "Seleccione una opción"
+            [[ "$APP_LANG" == "en" ]] && echo "Select an option" || echo "Seleccione una opción"
             ;;
         "invalid_option")
-            [[ "$LANG" == "en" ]] && echo "Invalid option" || echo "Opción inválida"
+            [[ "$APP_LANG" == "en" ]] && echo "Invalid option" || echo "Opción inválida"
             ;;
         "press_continue")
-            [[ "$LANG" == "en" ]] && echo "Press Enter to continue..." || echo "Presione Enter para continuar..."
+            [[ "$APP_LANG" == "en" ]] && echo "Press Enter to continue..." || echo "Presione Enter para continuar..."
             ;;
         # Instalación / Installation
         "install_title")
-            [[ "$LANG" == "en" ]] && echo "BACULA INSTALLATION" || echo "INSTALACIÓN DE BACULA"
+            [[ "$APP_LANG" == "en" ]] && echo "BACULA INSTALLATION" || echo "INSTALACIÓN DE BACULA"
             ;;
         "checking_deps")
-            [[ "$LANG" == "en" ]] && echo "Checking dependencies..." || echo "Verificando dependencias..."
+            [[ "$APP_LANG" == "en" ]] && echo "Checking dependencies..." || echo "Verificando dependencias..."
             ;;
         "updating_repos")
-            [[ "$LANG" == "en" ]] && echo "Updating package repositories..." || echo "Actualizando repositorios..."
+            [[ "$APP_LANG" == "en" ]] && echo "Updating package repositories..." || echo "Actualizando repositorios..."
             ;;
         "installing_bacula")
-            [[ "$LANG" == "en" ]] && echo "Installing Bacula components..." || echo "Instalando componentes de Bacula..."
+            [[ "$APP_LANG" == "en" ]] && echo "Installing Bacula components..." || echo "Instalando componentes de Bacula..."
             ;;
         "install_success")
-            [[ "$LANG" == "en" ]] && echo "Installation completed successfully!" || echo "¡Instalación completada exitosamente!"
+            [[ "$APP_LANG" == "en" ]] && echo "Installation completed successfully!" || echo "¡Instalación completada exitosamente!"
             ;;
         "install_error")
-            [[ "$LANG" == "en" ]] && echo "Installation failed" || echo "La instalación falló"
+            [[ "$APP_LANG" == "en" ]] && echo "Installation failed" || echo "La instalación falló"
             ;;
         "already_installed")
-            [[ "$LANG" == "en" ]] && echo "Bacula is already installed" || echo "Bacula ya está instalado"
+            [[ "$APP_LANG" == "en" ]] && echo "Bacula is already installed" || echo "Bacula ya está instalado"
             ;;
         # Configuración / Configuration
         "config_title")
-            [[ "$LANG" == "en" ]] && echo "SYSTEM CONFIGURATION" || echo "CONFIGURACIÓN DEL SISTEMA"
+            [[ "$APP_LANG" == "en" ]] && echo "SYSTEM CONFIGURATION" || echo "CONFIGURACIÓN DEL SISTEMA"
             ;;
         "config_welcome")
-            [[ "$LANG" == "en" ]] && echo "Welcome! Let's configure your backup system." || echo "¡Bienvenido! Configuraremos su sistema de respaldos."
+            [[ "$APP_LANG" == "en" ]] && echo "Welcome! Let's configure your backup system." || echo "¡Bienvenido! Configuraremos su sistema de respaldos."
             ;;
         "config_explain")
-            [[ "$LANG" == "en" ]] && echo "I will guide you through each step with explanations." || echo "Le guiaré paso a paso con explicaciones."
+            [[ "$APP_LANG" == "en" ]] && echo "I will guide you through each step with explanations." || echo "Le guiaré paso a paso con explicaciones."
             ;;
         "ask_director_name")
-            [[ "$LANG" == "en" ]] && echo "Backup Server Name (Director):" || echo "Nombre del Servidor de Respaldo (Director):"
+            [[ "$APP_LANG" == "en" ]] && echo "Backup Server Name (Director):" || echo "Nombre del Servidor de Respaldo (Director):"
             ;;
         "explain_director")
-            [[ "$LANG" == "en" ]] && echo "This is the unique identifier for this backup server." || echo "Este es el identificador único para este servidor de respaldos."
+            [[ "$APP_LANG" == "en" ]] && echo "This is the unique identifier for this backup server." || echo "Este es el identificador único para este servidor de respaldos."
             ;;
         "ask_password")
-            [[ "$LANG" == "en" ]] && echo "Enter secure password for Bacula services:" || echo "Ingrese contraseña segura para servicios Bacula:"
+            [[ "$APP_LANG" == "en" ]] && echo "Enter secure password for Bacula services:" || echo "Ingrese contraseña segura para servicios Bacula:"
             ;;
         "explain_password")
-            [[ "$LANG" == "en" ]] && echo "Password must be 8+ chars with letters, numbers and symbols." || echo "La contraseña debe tener 8+ caracteres con letras, números y símbolos."
+            [[ "$APP_LANG" == "en" ]] && echo "Password must be 8+ chars with letters, numbers and symbols." || echo "La contraseña debe tener 8+ caracteres con letras, números y símbolos."
             ;;
         "password_weak")
-            [[ "$LANG" == "en" ]] && echo "Password too weak. Minimum 8 characters with mixed case, numbers and symbols." || echo "Contraseña débil. Mínimo 8 caracteres con mayúsculas, minúsculas, números y símbolos."
+            [[ "$APP_LANG" == "en" ]] && echo "Password too weak. Minimum 8 characters with mixed case, numbers and symbols." || echo "Contraseña débil. Mínimo 8 caracteres con mayúsculas, minúsculas, números y símbolos."
             ;;
         "ask_backup_path")
-            [[ "$LANG" == "en" ]] && echo "Path to store backups:" || echo "Ruta para almacenar respaldos:"
+            [[ "$APP_LANG" == "en" ]] && echo "Path to store backups:" || echo "Ruta para almacenar respaldos:"
             ;;
         "explain_backup_path")
-            [[ "$LANG" == "en" ]] && echo "This directory will store all backup volumes. Ensure sufficient space." || echo "Este directorio almacenará todos los volúmenes. Asegure espacio suficiente."
+            [[ "$APP_LANG" == "en" ]] && echo "This directory will store all backup volumes. Ensure sufficient space." || echo "Este directorio almacenará todos los volúmenes. Asegure espacio suficiente."
             ;;
         "ask_what_to_backup")
-            [[ "$LANG" == "en" ]] && echo "What do you want to backup?" || echo "¿Qué desea respaldar?"
+            [[ "$APP_LANG" == "en" ]] && echo "What do you want to backup?" || echo "¿Qué desea respaldar?"
             ;;
         "option_system")
-            [[ "$LANG" == "en" ]] && echo "Complete System" || echo "Sistema Completo"
+            [[ "$APP_LANG" == "en" ]] && echo "Complete System" || echo "Sistema Completo"
             ;;
         "option_home")
-            [[ "$LANG" == "en" ]] && echo "User Home Directories" || echo "Directorios de Usuarios"
+            [[ "$APP_LANG" == "en" ]] && echo "User Home Directories" || echo "Directorios de Usuarios"
             ;;
         "option_custom")
-            [[ "$LANG" == "en" ]] && echo "Custom Directories" || echo "Directorios Personalizados"
+            [[ "$APP_LANG" == "en" ]] && echo "Custom Directories" || echo "Directorios Personalizados"
             ;;
         "option_databases")
-            [[ "$LANG" == "en" ]] && echo "Databases (PostgreSQL/MySQL)" || echo "Bases de Datos (PostgreSQL/MySQL)"
+            [[ "$APP_LANG" == "en" ]] && echo "Databases (PostgreSQL/MySQL)" || echo "Bases de Datos (PostgreSQL/MySQL)"
             ;;
         "ask_schedule")
-            [[ "$LANG" == "en" ]] && echo "Backup schedule:" || echo "Horario de respaldos:"
+            [[ "$APP_LANG" == "en" ]] && echo "Backup schedule:" || echo "Horario de respaldos:"
             ;;
         "option_daily")
-            [[ "$LANG" == "en" ]] && echo "Daily" || echo "Diario"
+            [[ "$APP_LANG" == "en" ]] && echo "Daily" || echo "Diario"
             ;;
         "option_weekly")
-            [[ "$LANG" == "en" ]] && echo "Weekly" || echo "Semanal"
+            [[ "$APP_LANG" == "en" ]] && echo "Weekly" || echo "Semanal"
             ;;
         "option_monthly")
-            [[ "$LANG" == "en" ]] && echo "Monthly" || echo "Mensual"
+            [[ "$APP_LANG" == "en" ]] && echo "Monthly" || echo "Mensual"
             ;;
         "option_custom_schedule")
-            [[ "$LANG" == "en" ]] && echo "Custom" || echo "Personalizado"
+            [[ "$APP_LANG" == "en" ]] && echo "Custom" || echo "Personalizado"
             ;;
         "ask_retention")
-            [[ "$LANG" == "en" ]] && echo "How long to keep backups?" || echo "¿Cuánto tiempo conservar los respaldos?"
+            [[ "$APP_LANG" == "en" ]] && echo "How long to keep backups?" || echo "¿Cuánto tiempo conservar los respaldos?"
             ;;
         "option_30days")
-            [[ "$LANG" == "en" ]] && echo "30 days" || echo "30 días"
+            [[ "$APP_LANG" == "en" ]] && echo "30 days" || echo "30 días"
             ;;
         "option_90days")
-            [[ "$LANG" == "en" ]] && echo "90 days" || echo "90 días"
+            [[ "$APP_LANG" == "en" ]] && echo "90 days" || echo "90 días"
             ;;
         "option_1year")
-            [[ "$LANG" == "en" ]] && echo "1 year" || echo "1 año"
+            [[ "$APP_LANG" == "en" ]] && echo "1 year" || echo "1 año"
             ;;
         "option_forever")
-            [[ "$LANG" == "en" ]] && echo "Forever" || echo "Para siempre"
+            [[ "$APP_LANG" == "en" ]] && echo "Forever" || echo "Para siempre"
             ;;
         "config_complete")
-            [[ "$LANG" == "en" ]] && echo "Configuration completed!" || echo "¡Configuración completada!"
+            [[ "$APP_LANG" == "en" ]] && echo "Configuration completed!" || echo "¡Configuración completada!"
             ;;
         "config_summary")
-            [[ "$LANG" == "en" ]] && echo "Configuration Summary:" || echo "Resumen de Configuración:"
+            [[ "$APP_LANG" == "en" ]] && echo "Configuration Summary:" || echo "Resumen de Configuración:"
             ;;
         # Backup / Respaldo
         "backup_title")
-            [[ "$LANG" == "en" ]] && echo "RUNNING BACKUP" || echo "EJECUTANDO RESPALDO"
+            [[ "$APP_LANG" == "en" ]] && echo "RUNNING BACKUP" || echo "EJECUTANDO RESPALDO"
             ;;
         "backup_starting")
-            [[ "$LANG" == "en" ]] && echo "Starting backup process..." || echo "Iniciando proceso de respaldo..."
+            [[ "$APP_LANG" == "en" ]] && echo "Starting backup process..." || echo "Iniciando proceso de respaldo..."
             ;;
         "backup_progress")
-            [[ "$LANG" == "en" ]] && echo "Backup in progress..." || echo "Respaldo en progreso..."
+            [[ "$APP_LANG" == "en" ]] && echo "Backup in progress..." || echo "Respaldo en progreso..."
             ;;
         "backup_success")
-            [[ "$LANG" == "en" ]] && echo "Backup completed successfully!" || echo "¡Respaldo completado exitosamente!"
+            [[ "$APP_LANG" == "en" ]] && echo "Backup completed successfully!" || echo "¡Respaldo completado exitosamente!"
             ;;
         "backup_failed")
-            [[ "$LANG" == "en" ]] && echo "Backup failed!" || echo "¡El respaldo falló!"
+            [[ "$APP_LANG" == "en" ]] && echo "Backup failed!" || echo "¡El respaldo falló!"
             ;;
         "backup_job_id")
-            [[ "$LANG" == "en" ]] && echo "Backup Job ID:" || echo "ID del Trabajo de Respaldo:"
+            [[ "$APP_LANG" == "en" ]] && echo "Backup Job ID:" || echo "ID del Trabajo de Respaldo:"
             ;;
         # Restore / Restauración
         "restore_title")
-            [[ "$LANG" == "en" ]] && echo "RESTORE FROM BACKUP" || echo "RESTAURAR DESDE RESPALDO"
+            [[ "$APP_LANG" == "en" ]] && echo "RESTORE FROM BACKUP" || echo "RESTAURAR DESDE RESPALDO"
             ;;
         "restore_listing")
-            [[ "$LANG" == "en" ]] && echo "Available backups:" || echo "Respaldos disponibles:"
+            [[ "$APP_LANG" == "en" ]] && echo "Available backups:" || echo "Respaldos disponibles:"
             ;;
         "restore_select")
-            [[ "$LANG" == "en" ]] && echo "Select backup to restore:" || echo "Seleccione respaldo a restaurar:"
+            [[ "$APP_LANG" == "en" ]] && echo "Select backup to restore:" || echo "Seleccione respaldo a restaurar:"
             ;;
         "restore_destination")
-            [[ "$LANG" == "en" ]] && echo "Restore destination path:" || echo "Ruta de destino para restaurar:"
+            [[ "$APP_LANG" == "en" ]] && echo "Restore destination path:" || echo "Ruta de destino para restaurar:"
             ;;
         "restore_confirm")
-            [[ "$LANG" == "en" ]] && echo "Confirm restore? This will overwrite existing files." || echo "¿Confirmar restauración? Esto sobrescribirá archivos existentes."
+            [[ "$APP_LANG" == "en" ]] && echo "Confirm restore? This will overwrite existing files." || echo "¿Confirmar restauración? Esto sobrescribirá archivos existentes."
             ;;
         "restore_success")
-            [[ "$LANG" == "en" ]] && echo "Restore completed successfully!" || echo "¡Restauración completada exitosamente!"
+            [[ "$APP_LANG" == "en" ]] && echo "Restore completed successfully!" || echo "¡Restauración completada exitosamente!"
             ;;
         "restore_failed")
-            [[ "$LANG" == "en" ]] && echo "Restore failed!" || echo "¡La restauración falló!"
+            [[ "$APP_LANG" == "en" ]] && echo "Restore failed!" || echo "¡La restauración falló!"
             ;;
         # Estado / Status
         "status_title")
-            [[ "$LANG" == "en" ]] && echo "BACKUP STATUS" || echo "ESTADO DE RESPALDOS"
+            [[ "$APP_LANG" == "en" ]] && echo "BACKUP STATUS" || echo "ESTADO DE RESPALDOS"
             ;;
         "status_no_jobs")
-            [[ "$LANG" == "en" ]] && echo "No backup jobs found" || echo "No se encontraron trabajos de respaldo"
+            [[ "$APP_LANG" == "en" ]] && echo "No backup jobs found" || echo "No se encontraron trabajos de respaldo"
             ;;
         "status_last_backup")
-            [[ "$LANG" == "en" ]] && echo "Last Backup:" || echo "Último Respaldo:"
+            [[ "$APP_LANG" == "en" ]] && echo "Last Backup:" || echo "Último Respaldo:"
             ;;
         "status_next_backup")
-            [[ "$LANG" == "en" ]] && echo "Next Scheduled:" || echo "Próximo Programado:"
+            [[ "$APP_LANG" == "en" ]] && echo "Next Scheduled:" || echo "Próximo Programado:"
             ;;
         "status_total_jobs")
-            [[ "$LANG" == "en" ]] && echo "Total Jobs:" || echo "Total de Trabajos:"
+            [[ "$APP_LANG" == "en" ]] && echo "Total Jobs:" || echo "Total de Trabajos:"
             ;;
         "status_storage_used")
-            [[ "$LANG" == "en" ]] && echo "Storage Used:" || echo "Espacio Utilizado:"
+            [[ "$APP_LANG" == "en" ]] && echo "Storage Used:" || echo "Espacio Utilizado:"
             ;;
         # Pruebas / Testing
         "test_title")
-            [[ "$LANG" == "en" ]] && echo "CONFIGURATION TEST" || echo "PRUEBA DE CONFIGURACIÓN"
+            [[ "$APP_LANG" == "en" ]] && echo "CONFIGURATION TEST" || echo "PRUEBA DE CONFIGURACIÓN"
             ;;
         "test_running")
-            [[ "$LANG" == "en" ]] && echo "Testing Bacula configuration..." || echo "Probando configuración de Bacula..."
+            [[ "$APP_LANG" == "en" ]] && echo "Testing Bacula configuration..." || echo "Probando configuración de Bacula..."
             ;;
         "test_passed")
-            [[ "$LANG" == "en" ]] && echo "All tests passed!" || echo "¡Todas las pruebas pasaron!"
+            [[ "$APP_LANG" == "en" ]] && echo "All tests passed!" || echo "¡Todas las pruebas pasaron!"
             ;;
         "test_failed")
-            [[ "$LANG" == "en" ]] && echo "Some tests failed!" || echo "¡Algunas pruebas fallaron!"
+            [[ "$APP_LANG" == "en" ]] && echo "Some tests failed!" || echo "¡Algunas pruebas fallaron!"
             ;;
         # Mensajes generales / General messages
         "warning")
-            [[ "$LANG" == "en" ]] && echo "WARNING" || echo "ADVERTENCIA"
+            [[ "$APP_LANG" == "en" ]] && echo "WARNING" || echo "ADVERTENCIA"
             ;;
         "success")
-            [[ "$LANG" == "en" ]] && echo "SUCCESS" || echo "ÉXITO"
+            [[ "$APP_LANG" == "en" ]] && echo "SUCCESS" || echo "ÉXITO"
             ;;
         "error")
-            [[ "$LANG" == "en" ]] && echo "ERROR" || echo "ERROR"
+            [[ "$APP_LANG" == "en" ]] && echo "ERROR" || echo "ERROR"
             ;;
         "info")
-            [[ "$LANG" == "en" ]] && echo "INFO" || echo "INFO"
+            [[ "$APP_LANG" == "en" ]] && echo "INFO" || echo "INFO"
             ;;
         "yes")
-            [[ "$LANG" == "en" ]] && echo "Yes" || echo "Sí"
+            [[ "$APP_LANG" == "en" ]] && echo "Yes" || echo "Sí"
             ;;
         "no")
-            [[ "$LANG" == "en" ]] && echo "No" || echo "No"
+            [[ "$APP_LANG" == "en" ]] && echo "No" || echo "No"
             ;;
         "cancel")
-            [[ "$LANG" == "en" ]] && echo "Cancel" || echo "Cancelar"
+            [[ "$APP_LANG" == "en" ]] && echo "Cancel" || echo "Cancelar"
             ;;
         "back")
-            [[ "$LANG" == "en" ]] && echo "Back" || echo "Volver"
+            [[ "$APP_LANG" == "en" ]] && echo "Back" || echo "Volver"
             ;;
         "exit_confirm")
-            [[ "$LANG" == "en" ]] && echo "Are you sure you want to exit?" || echo "¿Está seguro de que desea salir?"
+            [[ "$APP_LANG" == "en" ]] && echo "Are you sure you want to exit?" || echo "¿Está seguro de que desea salir?"
             ;;
         "coming_soon")
-            [[ "$LANG" == "en" ]] && echo "Feature coming soon!" || echo "¡Función próximamente!"
+            [[ "$APP_LANG" == "en" ]] && echo "Feature coming soon!" || echo "¡Función próximamente!"
             ;;
         # Remote Backup / Respaldo Remoto
         "remote_title")
-            [[ "$LANG" == "en" ]] && echo "REMOTE BACKUP CONFIGURATION" || echo "CONFIGURACIÓN DE RESPALDO REMOTO"
+            [[ "$APP_LANG" == "en" ]] && echo "REMOTE BACKUP CONFIGURATION" || echo "CONFIGURACIÓN DE RESPALDO REMOTO"
             ;;
         "remote_enable")
-            [[ "$LANG" == "en" ]] && echo "Enable remote backup?" || echo "¿Habilitar respaldo remoto?"
+            [[ "$APP_LANG" == "en" ]] && echo "Enable remote backup?" || echo "¿Habilitar respaldo remoto?"
             ;;
         "remote_explain")
-            [[ "$LANG" == "en" ]] && echo "Backups will be stored on a remote host via secure SSH connection." || echo "Los respaldos se almacenarán en un host remoto vía conexión SSH segura."
+            [[ "$APP_LANG" == "en" ]] && echo "Backups will be stored on a remote host via secure SSH connection." || echo "Los respaldos se almacenarán en un host remoto vía conexión SSH segura."
             ;;
         "ask_remote_host")
-            [[ "$LANG" == "en" ]] && echo "Remote host IP or hostname:" || echo "IP o nombre del host remoto:"
+            [[ "$APP_LANG" == "en" ]] && echo "Remote host IP or hostname:" || echo "IP o nombre del host remoto:"
             ;;
         "ask_remote_user")
-            [[ "$LANG" == "en" ]] && echo "Remote username:" || echo "Usuario remoto:"
+            [[ "$APP_LANG" == "en" ]] && echo "Remote username:" || echo "Usuario remoto:"
             ;;
         "ask_remote_password")
-            [[ "$LANG" == "en" ]] && echo "Remote password (for initial SSH setup):" || echo "Contraseña remota (para configuración SSH inicial):"
+            [[ "$APP_LANG" == "en" ]] && echo "Remote password (for initial SSH setup):" || echo "Contraseña remota (para configuración SSH inicial):"
             ;;
         "ask_remote_path")
-            [[ "$LANG" == "en" ]] && echo "Remote path for backups:" || echo "Ruta remota para respaldos:"
+            [[ "$APP_LANG" == "en" ]] && echo "Remote path for backups:" || echo "Ruta remota para respaldos:"
             ;;
         "explain_remote_path")
-            [[ "$LANG" == "en" ]] && echo "Directory on remote host where backup volumes will be stored." || echo "Directorio en el host remoto donde se almacenarán los volúmenes de respaldo."
+            [[ "$APP_LANG" == "en" ]] && echo "Directory on remote host where backup volumes will be stored." || echo "Directorio en el host remoto donde se almacenarán los volúmenes de respaldo."
             ;;
         "remote_connection_type")
-            [[ "$LANG" == "en" ]] && echo "Connection type:" || echo "Tipo de conexión:"
+            [[ "$APP_LANG" == "en" ]] && echo "Connection type:" || echo "Tipo de conexión:"
             ;;
         "option_ssh_tunnel")
-            [[ "$LANG" == "en" ]] && echo "SSH Tunnel (Secure, recommended)" || echo "Túnel SSH (Seguro, recomendado)"
+            [[ "$APP_LANG" == "en" ]] && echo "SSH Tunnel (Secure, recommended)" || echo "Túnel SSH (Seguro, recomendado)"
             ;;
         "option_direct")
-            [[ "$LANG" == "en" ]] && echo "Direct (same VLAN/LAN only)" || echo "Directo (misma VLAN/LAN solo)"
+            [[ "$APP_LANG" == "en" ]] && echo "Direct (same VLAN/LAN only)" || echo "Directo (misma VLAN/LAN solo)"
             ;;
         "option_vpn")
-            [[ "$LANG" == "en" ]] && echo "VPN Connection" || echo "Conexión VPN"
+            [[ "$APP_LANG" == "en" ]] && echo "VPN Connection" || echo "Conexión VPN"
             ;;
         "remote_config_success")
-            [[ "$LANG" == "en" ]] && echo "Remote backup configured successfully!" || echo "¡Respaldo remoto configurado exitosamente!"
+            [[ "$APP_LANG" == "en" ]] && echo "Remote backup configured successfully!" || echo "¡Respaldo remoto configurado exitosamente!"
             ;;
         "remote_test_failed")
-            [[ "$LANG" == "en" ]] && echo "Remote connection test failed. Check network connectivity." || echo "Prueba de conexión remota falló. Verifique conectividad de red."
+            [[ "$APP_LANG" == "en" ]] && echo "Remote connection test failed. Check network connectivity." || echo "Prueba de conexión remota falló. Verifique conectividad de red."
             ;;
         "ssh_keys_title")
-            [[ "$LANG" == "en" ]] && echo "SSH KEY MANAGEMENT" || echo "GESTIÓN DE CLAVES SSH"
+            [[ "$APP_LANG" == "en" ]] && echo "SSH KEY MANAGEMENT" || echo "GESTIÓN DE CLAVES SSH"
             ;;
         "ssh_key_generate")
-            [[ "$LANG" == "en" ]] && echo "Generate new SSH key pair" || echo "Generar nuevo par de claves SSH"
+            [[ "$APP_LANG" == "en" ]] && echo "Generate new SSH key pair" || echo "Generar nuevo par de claves SSH"
             ;;
         "ssh_key_deploy")
-            [[ "$LANG" == "en" ]] && echo "Deploy SSH key to remote host" || echo "Desplegar clave SSH a host remoto"
+            [[ "$APP_LANG" == "en" ]] && echo "Deploy SSH key to remote host" || echo "Desplegar clave SSH a host remoto"
             ;;
         "ssh_key_test")
-            [[ "$LANG" == "en" ]] && echo "Test SSH connection" || echo "Probar conexión SSH"
+            [[ "$APP_LANG" == "en" ]] && echo "Test SSH connection" || echo "Probar conexión SSH"
             ;;
         "ssh_key_exists")
-            [[ "$LANG" == "en" ]] && echo "SSH key already exists" || echo "La clave SSH ya existe"
+            [[ "$APP_LANG" == "en" ]] && echo "SSH key already exists" || echo "La clave SSH ya existe"
             ;;
         "network_test_title")
-            [[ "$LANG" == "en" ]] && echo "NETWORK CONNECTIVITY TEST" || echo "PRUEBA DE CONECTIVIDAD DE RED"
+            [[ "$APP_LANG" == "en" ]] && echo "NETWORK CONNECTIVITY TEST" || echo "PRUEBA DE CONECTIVIDAD DE RED"
             ;;
         "network_segment")
-            [[ "$LANG" == "en" ]] && echo "Network segment:" || echo "Segmento de red:"
+            [[ "$APP_LANG" == "en" ]] && echo "Network segment:" || echo "Segmento de red:"
             ;;
         "network_host_check")
-            [[ "$LANG" == "en" ]] && echo "Host to check:" || echo "Host a verificar:"
+            [[ "$APP_LANG" == "en" ]] && echo "Host to check:" || echo "Host a verificar:"
             ;;
         "security_credentials_stored")
-            [[ "$LANG" == "en" ]] && echo "Credentials stored securely in encrypted format." || echo "Credenciales almacenadas de forma segura en formato cifrado."
+            [[ "$APP_LANG" == "en" ]] && echo "Credentials stored securely in encrypted format." || echo "Credenciales almacenadas de forma segura en formato cifrado."
             ;;
         "security_env_auto")
-            [[ "$LANG" == "en" ]] && echo "Environment variables configured automatically." || echo "Variables de entorno configuradas automáticamente."
+            [[ "$APP_LANG" == "en" ]] && echo "Environment variables configured automatically." || echo "Variables de entorno configuradas automáticamente."
             ;;
         # Menú y Configuración / Menu and Configuration
         "menu_config_view")
-            [[ "$LANG" == "en" ]] && echo "VIEW FULL CONFIGURATION" || echo "VER CONFIGURACIÓN COMPLETA"
+            [[ "$APP_LANG" == "en" ]] && echo "VIEW FULL CONFIGURATION" || echo "VER CONFIGURACIÓN COMPLETA"
             ;;
         "menu_config_reset")
-            [[ "$LANG" == "en" ]] && echo "RESET CONFIGURATION" || echo "RESETEAR CONFIGURACIÓN"
+            [[ "$APP_LANG" == "en" ]] && echo "RESET CONFIGURATION" || echo "RESETEAR CONFIGURACIÓN"
             ;;
         "config_installation")
-            [[ "$LANG" == "en" ]] && echo "INSTALLATION" || echo "INSTALACIÓN"
+            [[ "$APP_LANG" == "en" ]] && echo "INSTALLATION" || echo "INSTALACIÓN"
             ;;
         "config_bacula_installed")
-            [[ "$LANG" == "en" ]] && echo "Bacula installed" || echo "Bacula instalado"
+            [[ "$APP_LANG" == "en" ]] && echo "Bacula installed" || echo "Bacula instalado"
             ;;
         "config_version")
-            [[ "$LANG" == "en" ]] && echo "Version" || echo "Versión"
+            [[ "$APP_LANG" == "en" ]] && echo "Version" || echo "Versión"
             ;;
         "config_configured")
-            [[ "$LANG" == "en" ]] && echo "Configured" || echo "Configurado"
+            [[ "$APP_LANG" == "en" ]] && echo "Configured" || echo "Configurado"
             ;;
         "config_services")
-            [[ "$LANG" == "en" ]] && echo "SERVICES" || echo "SERVICIOS"
+            [[ "$APP_LANG" == "en" ]] && echo "SERVICES" || echo "SERVICIOS"
             ;;
         "running")
-            [[ "$LANG" == "en" ]] && echo "Running" || echo "Ejecutándose"
+            [[ "$APP_LANG" == "en" ]] && echo "Running" || echo "Ejecutándose"
             ;;
         "stopped")
-            [[ "$LANG" == "en" ]] && echo "Stopped" || echo "Detenido"
+            [[ "$APP_LANG" == "en" ]] && echo "Stopped" || echo "Detenido"
             ;;
         "config_local")
-            [[ "$LANG" == "en" ]] && echo "LOCAL CONFIGURATION" || echo "CONFIGURACIÓN LOCAL"
+            [[ "$APP_LANG" == "en" ]] && echo "LOCAL CONFIGURATION" || echo "CONFIGURACIÓN LOCAL"
             ;;
         "config_director_name")
-            [[ "$LANG" == "en" ]] && echo "Director name" || echo "Nombre del Director"
+            [[ "$APP_LANG" == "en" ]] && echo "Director name" || echo "Nombre del Director"
             ;;
         "config_backup_path")
-            [[ "$LANG" == "en" ]] && echo "Backup path" || echo "Ruta de respaldos"
+            [[ "$APP_LANG" == "en" ]] && echo "Backup path" || echo "Ruta de respaldos"
             ;;
         "config_retention")
-            [[ "$LANG" == "en" ]] && echo "Retention" || echo "Retención"
+            [[ "$APP_LANG" == "en" ]] && echo "Retention" || echo "Retención"
             ;;
         "days")
-            [[ "$LANG" == "en" ]] && echo "days" || echo "días"
+            [[ "$APP_LANG" == "en" ]] && echo "days" || echo "días"
             ;;
         "config_compression")
-            [[ "$LANG" == "en" ]] && echo "Compression" || echo "Compresión"
+            [[ "$APP_LANG" == "en" ]] && echo "Compression" || echo "Compresión"
             ;;
         "config_backup_type")
-            [[ "$LANG" == "en" ]] && echo "Backup type" || echo "Tipo de respaldo"
+            [[ "$APP_LANG" == "en" ]] && echo "Backup type" || echo "Tipo de respaldo"
             ;;
         "config_not_configured")
-            [[ "$LANG" == "en" ]] && echo "Not configured" || echo "No configurado"
+            [[ "$APP_LANG" == "en" ]] && echo "Not configured" || echo "No configurado"
             ;;
         "config_remote")
-            [[ "$LANG" == "en" ]] && echo "REMOTE CONFIGURATION" || echo "CONFIGURACIÓN REMOTA"
+            [[ "$APP_LANG" == "en" ]] && echo "REMOTE CONFIGURATION" || echo "CONFIGURACIÓN REMOTA"
             ;;
         "config_remote_enabled")
-            [[ "$LANG" == "en" ]] && echo "Remote backup enabled" || echo "Respaldo remoto habilitado"
+            [[ "$APP_LANG" == "en" ]] && echo "Remote backup enabled" || echo "Respaldo remoto habilitado"
             ;;
         "config_remote_host")
-            [[ "$LANG" == "en" ]] && echo "Remote host" || echo "Host remoto"
+            [[ "$APP_LANG" == "en" ]] && echo "Remote host" || echo "Host remoto"
             ;;
         "config_remote_user")
-            [[ "$LANG" == "en" ]] && echo "Remote user" || echo "Usuario remoto"
+            [[ "$APP_LANG" == "en" ]] && echo "Remote user" || echo "Usuario remoto"
             ;;
         "config_connection_type")
-            [[ "$LANG" == "en" ]] && echo "Connection type" || echo "Tipo de conexión"
+            [[ "$APP_LANG" == "en" ]] && echo "Connection type" || echo "Tipo de conexión"
             ;;
         "config_remote_path")
-            [[ "$LANG" == "en" ]] && echo "Remote path" || echo "Ruta remota"
+            [[ "$APP_LANG" == "en" ]] && echo "Remote path" || echo "Ruta remota"
             ;;
         "config_ssh_key")
-            [[ "$LANG" == "en" ]] && echo "SSH key" || echo "Clave SSH"
+            [[ "$APP_LANG" == "en" ]] && echo "SSH key" || echo "Clave SSH"
             ;;
         "config_connection_status")
-            [[ "$LANG" == "en" ]] && echo "Connection status" || echo "Estado de conexión"
+            [[ "$APP_LANG" == "en" ]] && echo "Connection status" || echo "Estado de conexión"
             ;;
         "connected")
-            [[ "$LANG" == "en" ]] && echo "Connected" || echo "Conectado"
+            [[ "$APP_LANG" == "en" ]] && echo "Connected" || echo "Conectado"
             ;;
         "disconnected")
-            [[ "$LANG" == "en" ]] && echo "Disconnected" || echo "Desconectado"
+            [[ "$APP_LANG" == "en" ]] && echo "Disconnected" || echo "Desconectado"
             ;;
         "config_remote_not_configured")
-            [[ "$LANG" == "en" ]] && echo "Remote backup not configured" || echo "Respaldo remoto no configurado"
+            [[ "$APP_LANG" == "en" ]] && echo "Remote backup not configured" || echo "Respaldo remoto no configurado"
             ;;
         "config_storage")
-            [[ "$LANG" == "en" ]] && echo "STORAGE" || echo "ALMACENAMIENTO"
+            [[ "$APP_LANG" == "en" ]] && echo "STORAGE" || echo "ALMACENAMIENTO"
             ;;
         "config_available")
-            [[ "$LANG" == "en" ]] && echo "Available space" || echo "Espacio disponible"
+            [[ "$APP_LANG" == "en" ]] && echo "Available space" || echo "Espacio disponible"
             ;;
         "config_used")
-            [[ "$LANG" == "en" ]] && echo "Used space" || echo "Espacio usado"
+            [[ "$APP_LANG" == "en" ]] && echo "Used space" || echo "Espacio usado"
             ;;
         "config_total_volumes")
-            [[ "$LANG" == "en" ]] && echo "Total volumes" || echo "Volúmenes totales"
+            [[ "$APP_LANG" == "en" ]] && echo "Total volumes" || echo "Volúmenes totales"
             ;;
         # PostgreSQL / PostgreSQL
         "checking_postgresql")
-            [[ "$LANG" == "en" ]] && echo "Checking PostgreSQL installation..." || echo "Verificando instalación de PostgreSQL..."
+            [[ "$APP_LANG" == "en" ]] && echo "Checking PostgreSQL installation..." || echo "Verificando instalación de PostgreSQL..."
             ;;
         "postgresql_not_installed")
-            [[ "$LANG" == "en" ]] && echo "PostgreSQL not installed - safe to proceed" || echo "PostgreSQL no instalado - seguro para continuar"
+            [[ "$APP_LANG" == "en" ]] && echo "PostgreSQL not installed - safe to proceed" || echo "PostgreSQL no instalado - seguro para continuar"
             ;;
         "postgresql_version")
-            [[ "$LANG" == "en" ]] && echo "PostgreSQL version detected:" || echo "Versión PostgreSQL detectada:"
+            [[ "$APP_LANG" == "en" ]] && echo "PostgreSQL version detected:" || echo "Versión PostgreSQL detectada:"
             ;;
         "postgresql_in_use")
-            [[ "$LANG" == "en" ]] && echo "PostgreSQL is in use with production databases" || echo "PostgreSQL está en uso con bases de datos de producción"
+            [[ "$APP_LANG" == "en" ]] && echo "PostgreSQL is in use with production databases" || echo "PostgreSQL está en uso con bases de datos de producción"
             ;;
         "postgresql_warning")
-            [[ "$LANG" == "en" ]] && echo "Installing Bacula will use existing PostgreSQL instance" || echo "La instalación de Bacula usará la instancia PostgreSQL existente"
+            [[ "$APP_LANG" == "en" ]] && echo "Installing Bacula will use existing PostgreSQL instance" || echo "La instalación de Bacula usará la instancia PostgreSQL existente"
             ;;
         "existing_databases")
-            [[ "$LANG" == "en" ]] && echo "Existing databases:" || echo "Bases de datos existentes:"
+            [[ "$APP_LANG" == "en" ]] && echo "Existing databases:" || echo "Bases de datos existentes:"
             ;;
         "postgresql_continue")
-            [[ "$LANG" == "en" ]] && echo "Continue using existing PostgreSQL?" || echo "¿Continuar usando PostgreSQL existente?"
+            [[ "$APP_LANG" == "en" ]] && echo "Continue using existing PostgreSQL?" || echo "¿Continuar usando PostgreSQL existente?"
             ;;
         "postgresql_incompatible")
-            [[ "$LANG" == "en" ]] && echo "PostgreSQL compatibility check failed" || echo "Verificación de compatibilidad de PostgreSQL falló"
+            [[ "$APP_LANG" == "en" ]] && echo "PostgreSQL compatibility check failed" || echo "Verificación de compatibilidad de PostgreSQL falló"
             ;;
         "postgresql_existing")
-            [[ "$LANG" == "en" ]] && echo "Existing PostgreSQL detected:" || echo "PostgreSQL existente detectado:"
+            [[ "$APP_LANG" == "en" ]] && echo "Existing PostgreSQL detected:" || echo "PostgreSQL existente detectado:"
             ;;
         "postgresql_strategy")
-            [[ "$LANG" == "en" ]] && echo "Using existing PostgreSQL to avoid conflicts" || echo "Usando PostgreSQL existente para evitar conflictos"
+            [[ "$APP_LANG" == "en" ]] && echo "Using existing PostgreSQL to avoid conflicts" || echo "Usando PostgreSQL existente para evitar conflictos"
             ;;
         "postgresql_not_running")
-            [[ "$LANG" == "en" ]] && echo "PostgreSQL service is not running" || echo "El servicio PostgreSQL no está corriendo"
+            [[ "$APP_LANG" == "en" ]] && echo "PostgreSQL service is not running" || echo "El servicio PostgreSQL no está corriendo"
             ;;
         "postgresql_starting")
-            [[ "$LANG" == "en" ]] && echo "Starting PostgreSQL service..." || echo "Iniciando servicio PostgreSQL..."
+            [[ "$APP_LANG" == "en" ]] && echo "Starting PostgreSQL service..." || echo "Iniciando servicio PostgreSQL..."
             ;;
         "postgresql_start_failed")
-            [[ "$LANG" == "en" ]] && echo "Failed to start PostgreSQL service" || echo "Falló al iniciar el servicio PostgreSQL"
+            [[ "$APP_LANG" == "en" ]] && echo "Failed to start PostgreSQL service" || echo "Falló al iniciar el servicio PostgreSQL"
             ;;
         "postgresql_not_ready")
-            [[ "$LANG" == "en" ]] && echo "PostgreSQL service not ready after timeout" || echo "Servicio PostgreSQL no listo después del tiempo de espera"
+            [[ "$APP_LANG" == "en" ]] && echo "PostgreSQL service not ready after timeout" || echo "Servicio PostgreSQL no listo después del tiempo de espera"
             ;;
         "creating_bacula_db")
-            [[ "$LANG" == "en" ]] && echo "Creating Bacula database and user..." || echo "Creando base de datos y usuario Bacula..."
+            [[ "$APP_LANG" == "en" ]] && echo "Creating Bacula database and user..." || echo "Creando base de datos y usuario Bacula..."
             ;;
         "bacula_user_exists")
-            [[ "$LANG" == "en" ]] && echo "Bacula user already exists, updating password..." || echo "Usuario Bacula ya existe, actualizando contraseña..."
+            [[ "$APP_LANG" == "en" ]] && echo "Bacula user already exists, updating password..." || echo "Usuario Bacula ya existe, actualizando contraseña..."
             ;;
         "bacula_user_update_failed")
-            [[ "$LANG" == "en" ]] && echo "Failed to update Bacula user password" || echo "Falló al actualizar contraseña del usuario Bacula"
+            [[ "$APP_LANG" == "en" ]] && echo "Failed to update Bacula user password" || echo "Falló al actualizar contraseña del usuario Bacula"
             ;;
         "bacula_user_create_failed")
-            [[ "$LANG" == "en" ]] && echo "Failed to create Bacula user" || echo "Falló al crear usuario Bacula"
+            [[ "$APP_LANG" == "en" ]] && echo "Failed to create Bacula user" || echo "Falló al crear usuario Bacula"
             ;;
         "bacula_db_exists")
-            [[ "$LANG" == "en" ]] && echo "Bacula database already exists" || echo "Base de datos Bacula ya existe"
+            [[ "$APP_LANG" == "en" ]] && echo "Bacula database already exists" || echo "Base de datos Bacula ya existe"
             ;;
         "bacula_db_create_failed")
-            [[ "$LANG" == "en" ]] && echo "Failed to create Bacula database" || echo "Falló al crear base de datos Bacula"
+            [[ "$APP_LANG" == "en" ]] && echo "Failed to create Bacula database" || echo "Falló al crear base de datos Bacula"
             ;;
         "bacula_grant_failed")
-            [[ "$LANG" == "en" ]] && echo "Failed to grant privileges to Bacula user" || echo "Falló al otorgar privilegios al usuario Bacula"
+            [[ "$APP_LANG" == "en" ]] && echo "Failed to grant privileges to Bacula user" || echo "Falló al otorgar privilegios al usuario Bacula"
             ;;
         "bacula_db_configured")
-            [[ "$LANG" == "en" ]] && echo "Bacula database configured successfully" || echo "Base de datos Bacula configurada exitosamente"
+            [[ "$APP_LANG" == "en" ]] && echo "Bacula database configured successfully" || echo "Base de datos Bacula configurada exitosamente"
             ;;
         "postgresql_version_incompatible")
-            [[ "$LANG" == "en" ]] && echo "PostgreSQL version incompatible:" || echo "Versión PostgreSQL incompatible:"
+            [[ "$APP_LANG" == "en" ]] && echo "PostgreSQL version incompatible:" || echo "Versión PostgreSQL incompatible:"
             ;;
         "postgresql_min_version_required")
-            [[ "$LANG" == "en" ]] && echo "Minimum required version:" || echo "Versión mínima requerida:"
+            [[ "$APP_LANG" == "en" ]] && echo "Minimum required version:" || echo "Versión mínima requerida:"
             ;;
         "postgresql_upgrade_required")
-            [[ "$LANG" == "en" ]] && echo "Please upgrade PostgreSQL to continue" || echo "Por favor actualice PostgreSQL para continuar"
+            [[ "$APP_LANG" == "en" ]] && echo "Please upgrade PostgreSQL to continue" || echo "Por favor actualice PostgreSQL para continuar"
             ;;
         "postgresql_version_compatible")
-            [[ "$LANG" == "en" ]] && echo "PostgreSQL version compatible:" || echo "Versión PostgreSQL compatible:"
+            [[ "$APP_LANG" == "en" ]] && echo "PostgreSQL version compatible:" || echo "Versión PostgreSQL compatible:"
             ;;
         "installing_postgresql_version")
-            [[ "$LANG" == "en" ]] && echo "Installing PostgreSQL package:" || echo "Instalando paquete PostgreSQL:"
+            [[ "$APP_LANG" == "en" ]] && echo "Installing PostgreSQL package:" || echo "Instalando paquete PostgreSQL:"
             ;;
         "ask_time")
-            [[ "$LANG" == "en" ]] && echo "Enter backup time (HH:MM):" || echo "Ingrese la hora del respaldo (HH:MM):"
+            [[ "$APP_LANG" == "en" ]] && echo "Enter backup time (HH:MM):" || echo "Ingrese la hora del respaldo (HH:MM):"
             ;;
         "ask_strategy")
-            [[ "$LANG" == "en" ]] && echo "Backup strategy:" || echo "Estrategia de respaldo:"
+            [[ "$APP_LANG" == "en" ]] && echo "Backup strategy:" || echo "Estrategia de respaldo:"
             ;;
         "strategy_inc")
-            [[ "$LANG" == "en" ]] && echo "Incremental daily (Fastest)" || echo "Incremental diario (Más rápido)"
+            [[ "$APP_LANG" == "en" ]] && echo "Incremental daily (Fastest)" || echo "Incremental diario (Más rápido)"
             ;;
         "strategy_full")
-            [[ "$LANG" == "en" ]] && echo "Full daily (Safest, slow)" || echo "Completo diario (Más seguro, lento)"
+            [[ "$APP_LANG" == "en" ]] && echo "Full daily (Safest, slow)" || echo "Completo diario (Más seguro, lento)"
             ;;
         "strategy_mixed")
-            [[ "$LANG" == "en" ]] && echo "Mixed: Full on Sundays, Incremental daily" || echo "Mixto: Completo los domingos, Incremental diario (Recomendado)"
+            [[ "$APP_LANG" == "en" ]] && echo "Mixed: Full on Sundays, Incremental daily" || echo "Mixto: Completo los domingos, Incremental diario (Recomendado)"
             ;;
         "ask_storage")
-            [[ "$LANG" == "en" ]] && echo "Storage destination:" || echo "Destino de almacenamiento:"
+            [[ "$APP_LANG" == "en" ]] && echo "Storage destination:" || echo "Destino de almacenamiento:"
             ;;
         "storage_local")
-            [[ "$LANG" == "en" ]] && echo "Local storage" || echo "Almacenamiento local"
+            [[ "$APP_LANG" == "en" ]] && echo "Local storage" || echo "Almacenamiento local"
             ;;
         "storage_remote")
-            [[ "$LANG" == "en" ]] && echo "Remote storage (if configured)" || echo "Almacenamiento remoto (si está configurado)"
+            [[ "$APP_LANG" == "en" ]] && echo "Remote storage (if configured)" || echo "Almacenamiento remoto (si está configurado)"
             ;;
         # Reset / Resetear
         "reset_warning")
-            [[ "$LANG" == "en" ]] && echo "WARNING: This will delete configuration data!" || echo "ADVERTENCIA: ¡Esto eliminará datos de configuración!"
+            [[ "$APP_LANG" == "en" ]] && echo "WARNING: This will delete configuration data!" || echo "ADVERTENCIA: ¡Esto eliminará datos de configuración!"
             ;;
         "reset_local")
-            [[ "$LANG" == "en" ]] && echo "Reset local Bacula configuration" || echo "Resetear configuración local de Bacula"
+            [[ "$APP_LANG" == "en" ]] && echo "Reset local Bacula configuration" || echo "Resetear configuración local de Bacula"
             ;;
         "reset_remote")
-            [[ "$LANG" == "en" ]] && echo "Reset remote configuration" || echo "Resetear configuración remota"
+            [[ "$APP_LANG" == "en" ]] && echo "Reset remote configuration" || echo "Resetear configuración remota"
             ;;
         "reset_ssh_keys")
-            [[ "$LANG" == "en" ]] && echo "Reset SSH keys" || echo "Resetear claves SSH"
+            [[ "$APP_LANG" == "en" ]] && echo "Reset SSH keys" || echo "Resetear claves SSH"
             ;;
         "reset_logs")
-            [[ "$LANG" == "en" ]] && echo "Clear all logs" || echo "Borrar todos los logs"
+            [[ "$APP_LANG" == "en" ]] && echo "Clear all logs" || echo "Borrar todos los logs"
             ;;
         "reset_all")
-            [[ "$LANG" == "en" ]] && echo "RESET EVERYTHING" || echo "RESETEAR TODO"
+            [[ "$APP_LANG" == "en" ]] && echo "RESET EVERYTHING" || echo "RESETEAR TODO"
             ;;
         "confirm_reset_local")
-            [[ "$LANG" == "en" ]] && echo "Reset local configuration? This will stop services and delete config files." || echo "¿Resetear configuración local? Esto detendrá servicios y eliminará archivos de configuración."
+            [[ "$APP_LANG" == "en" ]] && echo "Reset local configuration? This will stop services and delete config files." || echo "¿Resetear configuración local? Esto detendrá servicios y eliminará archivos de configuración."
             ;;
         "confirm_reset_remote")
-            [[ "$LANG" == "en" ]] && echo "Reset remote configuration? This will disconnect from remote hosts." || echo "¿Resetear configuración remota? Esto desconectará de hosts remotos."
+            [[ "$APP_LANG" == "en" ]] && echo "Reset remote configuration? This will disconnect from remote hosts." || echo "¿Resetear configuración remota? Esto desconectará de hosts remotos."
             ;;
         "confirm_reset_ssh")
-            [[ "$LANG" == "en" ]] && echo "Reset SSH keys? You will need to reconfigure remote connections." || echo "¿Resetear claves SSH? Necesitará reconfigurar conexiones remotas."
+            [[ "$APP_LANG" == "en" ]] && echo "Reset SSH keys? You will need to reconfigure remote connections." || echo "¿Resetear claves SSH? Necesitará reconfigurar conexiones remotas."
             ;;
         "confirm_reset_logs")
-            [[ "$LANG" == "en" ]] && echo "Clear all logs? This cannot be undone." || echo "¿Borrar todos los logs? Esto no se puede deshacer."
+            [[ "$APP_LANG" == "en" ]] && echo "Clear all logs? This cannot be undone." || echo "¿Borrar todos los logs? Esto no se puede deshacer."
             ;;
         "resetting_local")
-            [[ "$LANG" == "en" ]] && echo "Resetting local configuration" || echo "Reseteando configuración local"
+            [[ "$APP_LANG" == "en" ]] && echo "Resetting local configuration" || echo "Reseteando configuración local"
             ;;
         "resetting_remote")
-            [[ "$LANG" == "en" ]] && echo "Resetting remote configuration" || echo "Reseteando configuración remota"
+            [[ "$APP_LANG" == "en" ]] && echo "Resetting remote configuration" || echo "Reseteando configuración remota"
             ;;
         "resetting_ssh")
-            [[ "$LANG" == "en" ]] && echo "Resetting SSH keys" || echo "Reseteando claves SSH"
+            [[ "$APP_LANG" == "en" ]] && echo "Resetting SSH keys" || echo "Reseteando claves SSH"
             ;;
         "resetting_logs")
-            [[ "$LANG" == "en" ]] && echo "Clearing logs" || echo "Borrando logs"
+            [[ "$APP_LANG" == "en" ]] && echo "Clearing logs" || echo "Borrando logs"
             ;;
         "resetting_all")
-            [[ "$LANG" == "en" ]] && echo "Resetting everything" || echo "Reseteando todo"
+            [[ "$APP_LANG" == "en" ]] && echo "Resetting everything" || echo "Reseteando todo"
             ;;
         "reset_local_complete")
-            [[ "$LANG" == "en" ]] && echo "Local configuration reset complete" || echo "Configuración local reseteada completamente"
+            [[ "$APP_LANG" == "en" ]] && echo "Local configuration reset complete" || echo "Configuración local reseteada completamente"
             ;;
         "reset_remote_complete")
-            [[ "$LANG" == "en" ]] && echo "Remote configuration reset complete" || echo "Configuración remota reseteada completamente"
+            [[ "$APP_LANG" == "en" ]] && echo "Remote configuration reset complete" || echo "Configuración remota reseteada completamente"
             ;;
         "reset_ssh_complete")
-            [[ "$LANG" == "en" ]] && echo "SSH keys reset complete" || echo "Claves SSH reseteadas completamente"
+            [[ "$APP_LANG" == "en" ]] && echo "SSH keys reset complete" || echo "Claves SSH reseteadas completamente"
             ;;
         "reset_logs_complete")
-            [[ "$LANG" == "en" ]] && echo "Logs cleared" || echo "Logs borrados"
+            [[ "$APP_LANG" == "en" ]] && echo "Logs cleared" || echo "Logs borrados"
             ;;
         "reset_all_complete")
-            [[ "$LANG" == "en" ]] && echo "Complete reset finished" || echo "Reset completo finalizado"
+            [[ "$APP_LANG" == "en" ]] && echo "Complete reset finished" || echo "Reset completo finalizado"
             ;;
         "reset_cancelled")
-            [[ "$LANG" == "en" ]] && echo "Reset cancelled" || echo "Reset cancelado"
+            [[ "$APP_LANG" == "en" ]] && echo "Reset cancelled" || echo "Reset cancelado"
             ;;
         "backup_saved")
-            [[ "$LANG" == "en" ]] && echo "Previous config backed up to" || echo "Configuración anterior respaldada en"
+            [[ "$APP_LANG" == "en" ]] && echo "Previous config backed up to" || echo "Configuración anterior respaldada en"
             ;;
         "reinstall_needed")
-            [[ "$LANG" == "en" ]] && echo "System needs reinstallation. Run the script again." || echo "El sistema necesita reinstalación. Ejecute el script nuevamente."
+            [[ "$APP_LANG" == "en" ]] && echo "System needs reinstallation. Run the script again." || echo "El sistema necesita reinstalación. Ejecute el script nuevamente."
             ;;
         # Mensajes Hardcodeados / Hardcoded messages
         "msg_generating_ssh")
-            [[ "$LANG" == "en" ]] && echo "Generating SSH key pair (Ed25519)..." || echo "Generando par de claves SSH (Ed25519)..."
+            [[ "$APP_LANG" == "en" ]] && echo "Generating SSH key pair (Ed25519)..." || echo "Generando par de claves SSH (Ed25519)..."
             ;;
         "msg_configuring_ssh")
-            [[ "$LANG" == "en" ]] && echo "Configuring SSH key authentication..." || echo "Configurando autenticación por clave SSH..."
+            [[ "$APP_LANG" == "en" ]] && echo "Configuring SSH key authentication..." || echo "Configurando autenticación por clave SSH..."
             ;;
         "msg_host_unreachable")
-            [[ "$LANG" == "en" ]] && echo "Host unreachable:" || echo "Host inalcanzable:"
+            [[ "$APP_LANG" == "en" ]] && echo "Host unreachable:" || echo "Host inalcanzable:"
             ;;
         "msg_ssh_configured")
-            [[ "$LANG" == "en" ]] && echo "SSH key authentication configured" || echo "Autenticación SSH configurada"
+            [[ "$APP_LANG" == "en" ]] && echo "SSH key authentication configured" || echo "Autenticación SSH configurada"
             ;;
         "msg_ssh_failed")
-            [[ "$LANG" == "en" ]] && echo "SSH authentication failed" || echo "Autenticación SSH fallida"
+            [[ "$APP_LANG" == "en" ]] && echo "SSH authentication failed" || echo "Autenticación SSH fallida"
             ;;
         "msg_testing_connectivity")
-            [[ "$LANG" == "en" ]] && echo "Testing connectivity to" || echo "Probando conectividad a"
+            [[ "$APP_LANG" == "en" ]] && echo "Testing connectivity to" || echo "Probando conectividad a"
             ;;
         "msg_ping_success")
-            [[ "$LANG" == "en" ]] && echo "ICMP ping successful" || echo "Ping ICMP exitoso"
+            [[ "$APP_LANG" == "en" ]] && echo "ICMP ping successful" || echo "Ping ICMP exitoso"
             ;;
         "msg_ping_failed")
-            [[ "$LANG" == "en" ]] && echo "ICMP ping failed (firewall may block)" || echo "Ping ICMP fallido (firewall puede bloquear)"
+            [[ "$APP_LANG" == "en" ]] && echo "ICMP ping failed (firewall may block)" || echo "Ping ICMP fallido (firewall puede bloquear)"
             ;;
         "msg_port_reachable")
-            [[ "$LANG" == "en" ]] && echo "TCP port reachable" || echo "Puerto TCP alcanzable"
+            [[ "$APP_LANG" == "en" ]] && echo "TCP port reachable" || echo "Puerto TCP alcanzable"
             ;;
         "msg_port_unreachable")
-            [[ "$LANG" == "en" ]] && echo "TCP port unreachable" || echo "Puerto TCP inalcanzable"
+            [[ "$APP_LANG" == "en" ]] && echo "TCP port unreachable" || echo "Puerto TCP inalcanzable"
             ;;
         "msg_check_firewall")
-            [[ "$LANG" == "en" ]] && echo "Check: Firewall rules, VLAN routing, network ACLs" || echo "Verifique: Reglas firewall, routing VLAN, ACLs de red"
+            [[ "$APP_LANG" == "en" ]] && echo "Check: Firewall rules, VLAN routing, network ACLs" || echo "Verifique: Reglas firewall, routing VLAN, ACLs de red"
             ;;
         "msg_bacula_not_installed")
-            [[ "$LANG" == "en" ]] && echo "Bacula not installed" || echo "Bacula no instalado"
+            [[ "$APP_LANG" == "en" ]] && echo "Bacula not installed" || echo "Bacula no instalado"
             ;;
         "msg_starting_services")
-            [[ "$LANG" == "en" ]] && echo "Starting Bacula services..." || echo "Iniciando servicios de Bacula..."
+            [[ "$APP_LANG" == "en" ]] && echo "Starting Bacula services..." || echo "Iniciando servicios de Bacula..."
             ;;
         "msg_check_logs")
-            [[ "$LANG" == "en" ]] && echo "Check logs:" || echo "Verifique logs:"
+            [[ "$APP_LANG" == "en" ]] && echo "Check logs:" || echo "Verifique logs:"
             ;;
         "msg_restoring")
-            [[ "$LANG" == "en" ]] && echo "Restoring..." || echo "Restaurando..."
+            [[ "$APP_LANG" == "en" ]] && echo "Restoring..." || echo "Restaurando..."
             ;;
         "msg_files_restored")
-            [[ "$LANG" == "en" ]] && echo "Files restored to:" || echo "Archivos restaurados en:"
+            [[ "$APP_LANG" == "en" ]] && echo "Files restored to:" || echo "Archivos restaurados en:"
             ;;
         "msg_service_status")
-            [[ "$LANG" == "en" ]] && echo "Service Status:" || echo "Estado de Servicios:"
+            [[ "$APP_LANG" == "en" ]] && echo "Service Status:" || echo "Estado de Servicios:"
             ;;
         "msg_running")
-            [[ "$LANG" == "en" ]] && echo "Running" || echo "Ejecutándose"
+            [[ "$APP_LANG" == "en" ]] && echo "Running" || echo "Ejecutándose"
             ;;
         "msg_stopped")
-            [[ "$LANG" == "en" ]] && echo "Stopped" || echo "Detenido"
+            [[ "$APP_LANG" == "en" ]] && echo "Stopped" || echo "Detenido"
             ;;
         "msg_job_queue")
-            [[ "$LANG" == "en" ]] && echo "Job Queue:" || echo "Cola de Trabajos:"
+            [[ "$APP_LANG" == "en" ]] && echo "Job Queue:" || echo "Cola de Trabajos:"
             ;;
         "msg_no_scheduled_jobs")
-            [[ "$LANG" == "en" ]] && echo "No scheduled jobs" || echo "No hay trabajos programados"
+            [[ "$APP_LANG" == "en" ]] && echo "No scheduled jobs" || echo "No hay trabajos programados"
             ;;
         "msg_log_director")
-            [[ "$LANG" == "en" ]] && echo "Bacula Director Log" || echo "Log del Director Bacula"
+            [[ "$APP_LANG" == "en" ]] && echo "Bacula Director Log" || echo "Log del Director Bacula"
             ;;
         "msg_log_storage")
-            [[ "$LANG" == "en" ]] && echo "Bacula Storage Log" || echo "Log del Storage Bacula"
+            [[ "$APP_LANG" == "en" ]] && echo "Bacula Storage Log" || echo "Log del Storage Bacula"
             ;;
         "msg_log_fd")
-            [[ "$LANG" == "en" ]] && echo "Bacula File Daemon Log" || echo "Log del File Daemon Bacula"
+            [[ "$APP_LANG" == "en" ]] && echo "Bacula File Daemon Log" || echo "Log del File Daemon Bacula"
             ;;
         "msg_log_manager")
-            [[ "$LANG" == "en" ]] && echo "Manager Log" || echo "Log del Gestor"
+            [[ "$APP_LANG" == "en" ]] && echo "Manager Log" || echo "Log del Gestor"
             ;;
         "msg_log_not_found")
-            [[ "$LANG" == "en" ]] && echo "Log file not found" || echo "Archivo de log no encontrado"
+            [[ "$APP_LANG" == "en" ]] && echo "Log file not found" || echo "Archivo de log no encontrado"
             ;;
         "msg_checking_config")
-            [[ "$LANG" == "en" ]] && echo "Checking configuration files..." || echo "Verificando archivos de configuración..."
+            [[ "$APP_LANG" == "en" ]] && echo "Checking configuration files..." || echo "Verificando archivos de configuración..."
             ;;
         "msg_validating_syntax")
-            [[ "$LANG" == "en" ]] && echo "Validating Bacula director syntax..." || echo "Validando sintaxis del Director Bacula..."
+            [[ "$APP_LANG" == "en" ]] && echo "Validating Bacula director syntax..." || echo "Validando sintaxis del Director Bacula..."
             ;;
         "msg_checking_services")
-            [[ "$LANG" == "en" ]] && echo "Checking Bacula services..." || echo "Verificando servicios Bacula..."
+            [[ "$APP_LANG" == "en" ]] && echo "Checking Bacula services..." || echo "Verificando servicios Bacula..."
             ;;
         "msg_testing_db")
-            [[ "$LANG" == "en" ]] && echo "Testing database connection..." || echo "Probando conexión a base de datos..."
+            [[ "$APP_LANG" == "en" ]] && echo "Testing database connection..." || echo "Probando conexión a base de datos..."
             ;;
         "msg_checking_storage")
-            [[ "$LANG" == "en" ]] && echo "Checking storage space..." || echo "Verificando espacio de almacenamiento..."
+            [[ "$APP_LANG" == "en" ]] && echo "Checking storage space..." || echo "Verificando espacio de almacenamiento..."
             ;;
         "msg_low_space")
-            [[ "$LANG" == "en" ]] && echo "Low space" || echo "Poco espacio"
+            [[ "$APP_LANG" == "en" ]] && echo "Low space" || echo "Poco espacio"
             ;;
         "msg_no_config")
-            [[ "$LANG" == "en" ]] && echo "No config" || echo "Sin configuración"
+            [[ "$APP_LANG" == "en" ]] && echo "No config" || echo "Sin configuración"
             ;;
         "msg_results")
-            [[ "$LANG" == "en" ]] && echo "Results:" || echo "Resultados:"
+            [[ "$APP_LANG" == "en" ]] && echo "Results:" || echo "Resultados:"
             ;;
         "msg_passed")
-            [[ "$LANG" == "en" ]] && echo "passed" || echo "pasaron"
+            [[ "$APP_LANG" == "en" ]] && echo "passed" || echo "pasaron"
             ;;
         "msg_failed")
-            [[ "$LANG" == "en" ]] && echo "failed" || echo "fallaron"
+            [[ "$APP_LANG" == "en" ]] && echo "failed" || echo "fallaron"
             ;;
         "msg_processing")
-            [[ "$LANG" == "en" ]] && echo "Processing" || echo "Procesando"
+            [[ "$APP_LANG" == "en" ]] && echo "Processing" || echo "Procesando"
+            ;;
+        "installing")
+            [[ "$APP_LANG" == "en" ]] && echo "Installing missing packages" || echo "Instalando paquetes faltantes"
+            ;;
+        "no_internet")
+            [[ "$APP_LANG" == "en" ]] && echo "No internet connectivity detected" || echo "Sin conectividad a internet detectada"
+            ;;
+        "no_internet_detail")
+            [[ "$APP_LANG" == "en" ]] && echo "Cannot download packages. Check your network connection and try again." || echo "No se pueden descargar paquetes. Verifique su conexión de red e intente nuevamente."
+            ;;
+        "install_offline_tip")
+            [[ "$APP_LANG" == "en" ]] && echo "TIP: Run 'sudo apt-get install -f' or reconnect to internet and retry." || echo "TIP: Ejecute 'sudo apt-get install -f' o reconéctese a internet e intente de nuevo."
+            ;;
+        "checking_connectivity")
+            [[ "$APP_LANG" == "en" ]] && echo "Checking internet connectivity..." || echo "Verificando conectividad a internet..."
+            ;;
+        "connectivity_ok")
+            [[ "$APP_LANG" == "en" ]] && echo "Internet connectivity OK" || echo "Conectividad a internet OK"
+            ;;
+        "install_fix_missing")
+            [[ "$APP_LANG" == "en" ]] && echo "Retrying with --fix-missing..." || echo "Reintentando con --fix-missing..."
             ;;
         *)
             echo "$key"
+
             ;;
     esac
 }
@@ -1185,14 +1208,14 @@ wait_for_package_locks() {
     for lock in "${locks[@]}"; do
         while [[ -f "$lock" ]] && fuser "$lock" >/dev/null 2>&1; do
             if [[ $waited -eq 0 ]]; then
-                [[ "$LANG" == "en" ]] && \
+                [[ "$APP_LANG" == "en" ]] && \
                     echo "Waiting for other package manager processes to finish..." || \
                     echo "Esperando a que otros procesos del gestor de paquetes terminen..."
             fi
             sleep 5
             waited=$((waited + 5))
             if [[ $waited -ge $max_wait ]]; then
-                [[ "$LANG" == "en" ]] && \
+                [[ "$APP_LANG" == "en" ]] && \
                     echo "Timeout waiting for package lock: $lock" || \
                     echo "Tiempo de espera agotado. Bloqueo: $lock"
                 break
@@ -1235,6 +1258,53 @@ update_package_cache() {
     esac
     return 0
 }
+
+# --- Verificar conectividad a internet / Check internet connectivity ---
+check_internet_connectivity() {
+    local timeout=5
+    local test_hosts=("8.8.8.8" "1.1.1.1" "9.9.9.9")
+
+    # Método 1: ping a DNS público
+    for host in "${test_hosts[@]}"; do
+        if ping -c 1 -W "$timeout" "$host" >/dev/null 2>&1; then
+            return 0
+        fi
+    done
+
+    # Método 2: TCP a puerto 80/443 (por si ICMP está bloqueado)
+    for host in "${test_hosts[@]}"; do
+        if timeout "$timeout" bash -c "</dev/tcp/$host/53" 2>/dev/null; then
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+# --- Instalar paquetes con reintentos / Install packages with retries ---
+apt_install_with_retry() {
+    local packages=("$@")
+    local max_attempts=2
+
+    for attempt in $(seq 1 $max_attempts); do
+        if DEBIAN_FRONTEND=noninteractive apt-get install -y -q \
+            --no-install-recommends \
+            --allow-unauthenticated \
+            "${packages[@]}" 2>&1; then
+            return 0
+        fi
+
+        if [[ $attempt -lt $max_attempts ]]; then
+            echo -e "${COLOR_YELLOW}   $(t "install_fix_missing")${COLOR_RESET}"
+            DEBIAN_FRONTEND=noninteractive apt-get install -y --fix-missing \
+                --allow-unauthenticated \
+                "${packages[@]}" 2>&1 && return 0
+        fi
+    done
+
+    return 1
+}
+
 
 # --- Barra de progreso / Progress bar ---
 progress_bar() {
@@ -1300,7 +1370,7 @@ confirm() {
             [Ss]*|"") return 0 ;;
             [Nn]*) return 1 ;;
             *) 
-                if [[ "$LANG" == "en" ]]; then
+                if [[ "$APP_LANG" == "en" ]]; then
                     echo "Please answer yes or no"
                 else
                     echo "Por favor responda sí o no"
@@ -1511,93 +1581,121 @@ install_bacula() {
         [[ "$installed" == false ]] && missing_deps+=("$dep")
     done
     
-    # Actualizar repositorios una sola vez al inicio si faltan dependencias o vamos a instalar Bacula
-    update_package_cache "$distro" || error_exit "$(t "install_error")"
+    # ── Verificar conectividad ANTES de intentar descargas ──────────────────
+    echo -e "${COLOR_CYAN}$(t "checking_connectivity")${COLOR_RESET}"
+    local has_internet=true
+    if ! check_internet_connectivity; then
+        has_internet=false
+        echo -e "${COLOR_YELLOW}⚠ $(t "no_internet")${COLOR_RESET}"
+        echo -e "  ${COLOR_YELLOW}$(t "no_internet_detail")${COLOR_RESET}"
+        echo -e "  ${COLOR_DIM}$(t "install_offline_tip")${COLOR_RESET}"
+        echo ""
+        if ! confirm "¿Intentar instalar de todas formas con caché local? / Try with local cache anyway?"; then
+            echo -e "${COLOR_YELLOW}Instalación cancelada por falta de conectividad.${COLOR_RESET}"
+            log_message "WARN" "Installation cancelled: no internet connectivity"
+            read -rp "$(t "press_continue")"
+            return 1
+        fi
+    else
+        echo -e "  ${COLOR_GREEN}✓ $(t "connectivity_ok")${COLOR_RESET}"
+    fi
+    echo ""
 
+    # ── Actualizar índice de repositorios ───────────────────────────────────
+    # Los warnings de repos caídos (W:) son normales y no deben bloquear la instalación
+    if [[ "$has_internet" == true ]]; then
+        update_package_cache "$distro" || {
+            echo -e "${COLOR_YELLOW}⚠ $(t "updating_repos") falló parcialmente, continuando con caché existente...${COLOR_RESET}"
+        }
+    fi
+
+    # ── Instalar dependencias faltantes ─────────────────────────────────────
     if [[ ${#missing_deps[@]} -gt 0 ]]; then
         echo -e "${COLOR_YELLOW}⚠ $(t "installing"): ${missing_deps[*]}${COLOR_RESET}"
         (
             case "$distro" in
-                debian-family) DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "${missing_deps[@]}" ;;
-                rhel-family) dnf install -y -q "${missing_deps[@]}" ;;
-                arch-family) pacman -S --nocolor --noconfirm "${missing_deps[@]}" ;;
-                suse-family) zypper install -y "${missing_deps[@]}" ;;
+                debian-family) apt_install_with_retry "${missing_deps[@]}" ;;
+                rhel-family)   dnf install -y -q "${missing_deps[@]}" ;;
+                arch-family)   pacman -S --nocolor --noconfirm "${missing_deps[@]}" ;;
+                suse-family)   zypper install -y "${missing_deps[@]}" ;;
             esac
         ) &
         spinner $!
-        wait $! || error_exit "$(t "install_error")"
+        wait $! || echo -e "  ${COLOR_YELLOW}⚠ Algunas dependencias opcionales no se pudieron instalar, continuando...${COLOR_RESET}"
     fi
-    
+
+    # ── Instalar Bacula ──────────────────────────────────────────────────────
     echo -e "${COLOR_CYAN}$(t "installing_bacula")${COLOR_RESET}"
-    
+
     case "$distro" in
         debian-family)
-            # Detectar versión para compatibilidad específica si es necesario
-            local os_version="0"
-            if [[ -f /etc/os-release ]]; then
-                os_version=$(grep VERSION_ID /etc/os-release | cut -d= -f2 | tr -d '"' | cut -d. -f1 | tr -d '\n')
-            fi
-            [[ -z "$os_version" ]] && os_version=20 # Default a valor moderno
-            
             local pg_version
             pg_version=$(detect_postgresql_version)
-            
+
+            local bacula_pkgs=(bacula-director bacula-sd bacula-fd bacula-console)
+
             if [[ "$pg_version" != "not_installed" ]]; then
                 echo -e "   ${COLOR_YELLOW}⚠ $(t "postgresql_existing") $pg_version${COLOR_RESET}"
-                (
-                    export DEBIAN_FRONTEND=noninteractive
-                    apt-get install -y -qq bacula-director bacula-sd bacula-fd bacula-console
-                ) &
-                spinner $!
-                wait $! || error_exit "$(t "install_error")"
+                echo -e "   ${COLOR_INFO}$(t "postgresql_strategy")${COLOR_RESET}"
+                # PostgreSQL ya existe — solo instalar componentes de Bacula sin traer PG nuevo
             else
-                local pg_package="postgresql"
-                # Lógica de versión para distros antiguas
-                if [[ "$os_version" -le 10 ]]; then pg_package="postgresql-11"; fi
-                
-                (
-                    export DEBIAN_FRONTEND=noninteractive
-                    apt-get install -y -qq bacula-director bacula-sd bacula-fd bacula-console "$pg_package"
-                ) &
-                spinner $!
-                wait $! || error_exit "$(t "install_error")"
+                bacula_pkgs+=(postgresql)
             fi
+
+            (
+                export DEBIAN_FRONTEND=noninteractive
+                apt_install_with_retry "${bacula_pkgs[@]}"
+            ) &
+            spinner $!
+            wait $! || {
+                echo -e "${COLOR_RED}✗ $(t "install_error")${COLOR_RESET}"
+                echo -e "  ${COLOR_YELLOW}$(t "no_internet_detail")${COLOR_RESET}"
+                echo -e "  ${COLOR_YELLOW}$(t "install_offline_tip")${COLOR_RESET}"
+                read -rp "$(t "press_continue")"
+                return 1
+            }
             ;;
         rhel-family)
             local pg_version
             pg_version=$(detect_postgresql_version)
-            
-            if [[ "$pg_version" != "not_installed" ]]; then
-                echo -e "   ${COLOR_YELLOW}⚠ $(t "postgresql_existing") $pg_version${COLOR_RESET}"
-                ( dnf install -y -q bacula-director bacula-sd bacula-client bacula-console ) &
-                spinner $!
-                wait $! || error_exit "$(t "install_error")"
-            else
-                (
-                    dnf install -y -q bacula-director bacula-sd bacula-client bacula-console postgresql-server
-                    postgresql-setup --initdb || true
-                    systemctl enable --now postgresql
-                ) &
-                spinner $!
-                wait $! || error_exit "$(t "install_error")"
+            local bacula_pkgs_rhel=(bacula-director bacula-sd bacula-client bacula-console)
+            if [[ "$pg_version" == "not_installed" ]]; then
+                bacula_pkgs_rhel+=(postgresql-server)
             fi
+            (
+                dnf install -y -q "${bacula_pkgs_rhel[@]}"
+                if [[ "$pg_version" == "not_installed" ]]; then
+                    postgresql-setup --initdb 2>/dev/null || true
+                    systemctl enable --now postgresql
+                fi
+            ) &
+            spinner $!
+            wait $! || {
+                echo -e "${COLOR_RED}✗ $(t "install_error")${COLOR_RESET}"
+                read -rp "$(t "press_continue")"
+                return 1
+            }
             ;;
         arch-family)
             echo -e "   ${COLOR_INFO}Installing Bacula via Pacman...${COLOR_RESET}"
             ( pacman -S --noconfirm --needed bacula-dir bacula-sd bacula-fd bacula-console ) &
             spinner $!
-            wait $! || error_exit "$(t "install_error")"
+            wait $! || { echo -e "${COLOR_RED}✗ $(t "install_error")${COLOR_RESET}"; read -rp "$(t "press_continue")"; return 1; }
             ;;
         suse-family)
             echo -e "   ${COLOR_INFO}Installing Bacula via Zypper...${COLOR_RESET}"
-            ( zypper install -y bacula-director bacula-sd-mysql bacula-fd bacula-console ) & # SUSE a veces usa nombres mixtos
+            ( zypper install -y bacula-director bacula-sd-mysql bacula-fd bacula-console ) &
             spinner $!
-            wait $! || error_exit "$(t "install_error")"
+            wait $! || { echo -e "${COLOR_RED}✗ $(t "install_error")${COLOR_RESET}"; read -rp "$(t "press_continue")"; return 1; }
             ;;
         *)
-            error_exit "$(t "install_error") - Distro no soportada / Unsupported distro: $distro"
+            echo -e "${COLOR_RED}✗ Distribución no soportada: $distro${COLOR_RESET}"
+            echo -e "  ${COLOR_YELLOW}Distribuciones soportadas: Debian, Ubuntu, Kali, RHEL, CentOS, Fedora, Arch, openSUSE${COLOR_RESET}"
+            read -rp "$(t "press_continue")"
+            return 1
             ;;
     esac
+
     
     # Configurar PostgreSQL para Bacula / Configure PostgreSQL for Bacula
     setup_bacula_database &
@@ -3069,20 +3167,20 @@ configure_bacula_legacy() {
 # --- Obtener descripción de horario / Get schedule description ---
 get_schedule_description() {
     case ${1:-} in
-        1) [[ "$LANG" == "en" ]] && echo "Daily at 02:00 AM" || echo "Diario a las 02:00 AM" ;;
-        2) [[ "$LANG" == "en" ]] && echo "Weekly Sundays 02:00 AM" || echo "Semanal Domingos 02:00 AM" ;;
-        3) [[ "$LANG" == "en" ]] && echo "Monthly 1st day 02:00 AM" || echo "Mensual día 1 a las 02:00 AM" ;;
-        4) [[ "$LANG" == "en" ]] && echo "Custom" || echo "Personalizado" ;;
+        1) [[ "$APP_LANG" == "en" ]] && echo "Daily at 02:00 AM" || echo "Diario a las 02:00 AM" ;;
+        2) [[ "$APP_LANG" == "en" ]] && echo "Weekly Sundays 02:00 AM" || echo "Semanal Domingos 02:00 AM" ;;
+        3) [[ "$APP_LANG" == "en" ]] && echo "Monthly 1st day 02:00 AM" || echo "Mensual día 1 a las 02:00 AM" ;;
+        4) [[ "$APP_LANG" == "en" ]] && echo "Custom" || echo "Personalizado" ;;
     esac
 }
 
 # --- Obtener descripción de retención / Get retention description ---
 get_retention_description() {
     case ${1:-} in
-        1) [[ "$LANG" == "en" ]] && echo "30 days" || echo "30 días" ;;
-        2) [[ "$LANG" == "en" ]] && echo "90 days" || echo "90 días" ;;
-        3) [[ "$LANG" == "en" ]] && echo "1 year" || echo "1 año" ;;
-        4) [[ "$LANG" == "en" ]] && echo "Forever" || echo "Para siempre" ;;
+        1) [[ "$APP_LANG" == "en" ]] && echo "30 days" || echo "30 días" ;;
+        2) [[ "$APP_LANG" == "en" ]] && echo "90 days" || echo "90 días" ;;
+        3) [[ "$APP_LANG" == "en" ]] && echo "1 year" || echo "1 año" ;;
+        4) [[ "$APP_LANG" == "en" ]] && echo "Forever" || echo "Para siempre" ;;
     esac
 }
 
@@ -3145,13 +3243,15 @@ generate_bacula_config() {
         4) vol_retention="3 years"; job_retention="3 years"; file_retention="3 years" ;;
     esac
     
-    # Calcular horario / Calculate schedule
+    # Calcular horario en sintaxis válida de Bacula / Calculate schedule in valid Bacula syntax
     local schedule_cron
     case $schedule_type in
-        1) schedule_cron="daily at 02:00" ;;
-        2) schedule_cron="weekly on sunday at 02:00" ;;
-        3) schedule_cron="monthly on 1 at 02:00" ;;
-        4) schedule_cron="daily at 02:00" ;;
+        1) schedule_cron="Run = Level=Full daily at 02:00" ;;
+        2) schedule_cron="Run = Level=Full sun at 02:00
+    Run = Level=Incremental mon-sat at 02:00" ;;
+        3) schedule_cron="Run = Level=Full 1st sun at 02:00
+    Run = Level=Differential 1st mon-sat at 02:00" ;;
+        4) schedule_cron="Run = Level=Full daily at 02:00" ;;
     esac
     
     # Director configuration
@@ -3238,7 +3338,7 @@ EOF
 
 Schedule {
     Name = "WeeklyCycle"
-    Run = $schedule_cron
+    $schedule_cron
 }
 
 Client {
@@ -4124,8 +4224,8 @@ change_language() {
     read -rp "   Select language / Seleccione idioma [1-2]: " lang_choice
     
     case $lang_choice in
-        1) LANG="es" ;;
-        2) LANG="en" ;;
+        1) APP_LANG="es" ;;
+        2) APP_LANG="en" ;;
         *) 
             echo -e "${COLOR_RED}$(t "invalid_option")${COLOR_RESET}"
             sleep 1
@@ -4135,7 +4235,7 @@ change_language() {
     
     # Guardar preferencia / Save preference
     mkdir -p "$CONFIG_DIR"
-    echo "LANG=$LANG" > "$CONFIG_DIR/lang.conf"
+    echo "APP_LANG=$APP_LANG" > "$CONFIG_DIR/lang.conf"
     
     echo ""
     echo -e "${COLOR_GREEN}✓ Language changed / Idioma cambiado${COLOR_RESET}"
@@ -4203,7 +4303,7 @@ show_existing_config_info() {
         fi
         
         echo ""
-        if [[ "$LANG" == "en" ]]; then
+        if [[ "$APP_LANG" == "en" ]]; then
             echo -e "${COLOR_DIM}Use option 12 in the menu to reset configuration if needed.${COLOR_RESET}"
         else
             echo -e "${COLOR_DIM}Use la opción 12 en el menú para resetear la configuración si es necesario.${COLOR_RESET}"
@@ -4917,7 +5017,7 @@ show_menu() {
     show_banner
     
     local lang_indicator="🇪🇸"
-    [[ "$LANG" == "en" ]] && lang_indicator="🇺🇸"
+    [[ "$APP_LANG" == "en" ]] && lang_indicator="🇺🇸"
     
     echo -e "${COLOR_BOLD}${COLOR_BLUE}═══════════════════════════════════════════════════════════════════════════${COLOR_RESET}"
     echo -e "${COLOR_BOLD}  $(t "menu_title") ${lang_indicator}${COLOR_RESET}"
