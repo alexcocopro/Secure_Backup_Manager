@@ -1176,6 +1176,66 @@ spinner() {
     printf "    \b\b\b\b"
 }
 
+# --- Esperar por bloqueos de APT / Wait for APT locks ---
+wait_for_package_locks() {
+    local max_wait=300
+    local waited=0
+    local locks=("/var/lib/dpkg/lock-frontend" "/var/lib/apt/lists/lock" "/var/cache/apt/archives/lock")
+
+    for lock in "${locks[@]}"; do
+        while [[ -f "$lock" ]] && fuser "$lock" >/dev/null 2>&1; do
+            if [[ $waited -eq 0 ]]; then
+                [[ "$LANG" == "en" ]] && \
+                    echo "Waiting for other package manager processes to finish..." || \
+                    echo "Esperando a que otros procesos del gestor de paquetes terminen..."
+            fi
+            sleep 5
+            waited=$((waited + 5))
+            if [[ $waited -ge $max_wait ]]; then
+                [[ "$LANG" == "en" ]] && \
+                    echo "Timeout waiting for package lock: $lock" || \
+                    echo "Tiempo de espera agotado. Bloqueo: $lock"
+                break
+            fi
+        done
+    done
+}
+
+# --- Actualizar caché de repositorios UNA SOLA VEZ / Update repo cache once ---
+update_package_cache() {
+    local distro="${1:-}"
+    [[ -z "$distro" ]] && distro=$(detect_distro)
+
+    echo -e "${COLOR_CYAN}$(t "updating_repos")${COLOR_RESET}"
+
+    case "$distro" in
+        debian-family)
+            wait_for_package_locks
+            # --allow-releaseinfo-change es necesario en Kali rolling y Debian unstable/testing
+            if ! DEBIAN_FRONTEND=noninteractive apt-get update --allow-releaseinfo-change -y -qq 2>&1; then
+                echo -e "${COLOR_YELLOW}⚠ $(t "warning"): Retrying apt-get update without quiet mode...${COLOR_RESET}"
+                DEBIAN_FRONTEND=noninteractive apt-get update --allow-releaseinfo-change -y 2>&1 || {
+                    echo -e "${COLOR_RED}✗ ERROR: apt-get update failed.${COLOR_RESET}"
+                    if grep -qi "kali" /etc/os-release 2>/dev/null; then
+                        echo -e "${COLOR_YELLOW}  TIP (Kali): sudo apt clean && sudo rm -rf /var/lib/apt/lists/* && sudo apt update${COLOR_RESET}"
+                    fi
+                    return 1
+                }
+            fi
+            ;;
+        rhel-family)
+            dnf makecache -q 2>/dev/null || true
+            ;;
+        arch-family)
+            pacman -Sy --nocolor --noconfirm >/dev/null 2>&1 || true
+            ;;
+        suse-family)
+            zypper refresh >/dev/null 2>&1 || true
+            ;;
+    esac
+    return 0
+}
+
 # --- Barra de progreso / Progress bar ---
 progress_bar() {
     local current="${1:-0}"
@@ -1451,14 +1511,16 @@ install_bacula() {
         [[ "$installed" == false ]] && missing_deps+=("$dep")
     done
     
+    # Actualizar repositorios una sola vez al inicio si faltan dependencias o vamos a instalar Bacula
+    update_package_cache "$distro" || error_exit "$(t "install_error")"
+
     if [[ ${#missing_deps[@]} -gt 0 ]]; then
         echo -e "${COLOR_YELLOW}⚠ $(t "installing"): ${missing_deps[*]}${COLOR_RESET}"
-        echo -e "${COLOR_CYAN}$(t "updating_repos")${COLOR_RESET}"
         (
             case "$distro" in
-                debian-family) apt-get update -qq && apt-get install -y -qq "${missing_deps[@]}" ;;
+                debian-family) DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "${missing_deps[@]}" ;;
                 rhel-family) dnf install -y -q "${missing_deps[@]}" ;;
-                arch-family) pacman -Sy --nocolor --noconfirm "${missing_deps[@]}" ;;
+                arch-family) pacman -S --nocolor --noconfirm "${missing_deps[@]}" ;;
                 suse-family) zypper install -y "${missing_deps[@]}" ;;
             esac
         ) &
@@ -1484,7 +1546,6 @@ install_bacula() {
                 echo -e "   ${COLOR_YELLOW}⚠ $(t "postgresql_existing") $pg_version${COLOR_RESET}"
                 (
                     export DEBIAN_FRONTEND=noninteractive
-                    apt-get update -qq
                     apt-get install -y -qq bacula-director bacula-sd bacula-fd bacula-console
                 ) &
                 spinner $!
@@ -1496,7 +1557,6 @@ install_bacula() {
                 
                 (
                     export DEBIAN_FRONTEND=noninteractive
-                    apt-get update -qq
                     apt-get install -y -qq bacula-director bacula-sd bacula-fd bacula-console "$pg_package"
                 ) &
                 spinner $!
