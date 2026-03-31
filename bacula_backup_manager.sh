@@ -421,10 +421,10 @@ show_banner() {
     echo "║     ██████╔╝██║  ██║╚██████╗╚██████╔╝███████╗██║  ██║                     ║"
     echo "║     ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝╚═╝  ╚═╝                     ║"
     echo "║                                                                           ║"
-    echo "║              ENTERPRISE BACKUP MANAGER SOLUTION v${SCRIPT_VERSION}        ║"
+    echo "║              ENTERPRISE BACKUP MANAGER SOLUTION v${SCRIPT_VERSION}               ║"
     echo "║                                                                           ║"
-    echo "║     Developer: ${AUTHOR}                      ║"
-    echo "║     ${TITLE}                                  ║"
+    echo "║     Developer: ${AUTHOR}                            ║"
+    echo "║     ${TITLE}                               ║"
     echo "║                                                                           ║"
     echo "╚═══════════════════════════════════════════════════════════════════════════╝"
     echo -e "${COLOR_RESET}"
@@ -1867,7 +1867,7 @@ create_backup_job() {
     # Ruta de respaldo
     if [[ -z "$backup_path" ]]; then
         echo -e "${COLOR_BOLD}Backup Path / Ruta de Respaldo:${COLOR_RESET}"
-        backup_path=$(read_directory_input "   $(t "select_option")" "/backups")
+        backup_path=$(read_line_edit "   $(t "select_option")" "/backups")
         backup_path=${backup_path:-/backups}
     fi
     
@@ -1904,7 +1904,7 @@ create_backup_job() {
             3)
                 echo -e "   ${COLOR_CYAN}Enter directories to backup (one per line, empty to finish):${COLOR_RESET}"
                 while true; do
-                    custom_path=$(read_directory_input "   Path")
+                    custom_path=$(read_line_edit "   Path")
                     [[ -z "$custom_path" ]] && break
                     if [[ -d "$custom_path" ]]; then
                         job_include_paths+=("$custom_path")
@@ -3100,7 +3100,7 @@ configure_bacula_legacy() {
     # 3. Ruta de respaldos / Backup path
     echo -e "${COLOR_BOLD}3. $(t "ask_backup_path")${COLOR_RESET}"
     echo -e "   ${COLOR_DIM}$(t "explain_backup_path")${COLOR_RESET}"
-    backup_path=$(read_directory_input "   $(t "select_option")" "/backups")
+    backup_path=$(read_line_edit "   $(t "select_option")" "/backups")
     backup_path=${backup_path:-/backups}
     
     # Crear directorio si no existe / Create directory if not exists
@@ -3139,7 +3139,7 @@ configure_bacula_legacy() {
             3)
                 echo -e "   ${COLOR_CYAN}Enter directories to backup (one per line, empty to finish):${COLOR_RESET}"
                 while true; do
-                    custom_path=$(read_directory_input "   Path")
+                    custom_path=$(read_line_edit "   Path")
                     [[ -z "$custom_path" ]] && break
                     if [[ -d "$custom_path" ]]; then
                         include_paths+=("$custom_path")
@@ -3889,7 +3889,7 @@ restore_backup() {
     
     # Seleccionar destino / Select destination
     local restore_path
-    restore_path=$(read_directory_input "   $(t "restore_destination")" "/tmp/bacula-restores")
+    restore_path=$(read_line_edit "   $(t "restore_destination")" "/tmp/bacula-restores")
     restore_path=${restore_path:-/tmp/bacula-restores}
     
     # Crear directorio de restauración si no existe
@@ -4802,7 +4802,7 @@ configure_remote_backup() {
     # 4. Ruta remota
     echo -e "${COLOR_BOLD}4. $(t "ask_remote_path")${COLOR_RESET}"
     echo -e "   ${COLOR_DIM}$(t "explain_remote_path")${COLOR_RESET}"
-    remote_path=$(read_directory_input "   $(t "select_option")" "/backups/remote")
+    remote_path=$(read_line_edit "   $(t "select_option")" "/backups/remote")
     remote_path=${remote_path:-/backups/remote}
     echo ""
     
@@ -5118,113 +5118,164 @@ read_menu_choice() {
     local min_choice="${2:-0}"
     local max_choice="${3:-15}"
     local current_choice="${4:-1}"
-    
-    echo -ne "\r${prompt} [${min_choice}-${max_choice}]: ${current_choice} "
-    
+
+    echo -ne "${prompt} [${min_choice}-${max_choice}]: ${current_choice}"
+
     while true; do
-        # Leer un carácter sin echo
+        # Leer un carácter a la vez
         local char
-        IFS= read -rsn1 char
-        
+        IFS= read -rsn1 -t 0.1 char 2>/dev/null
+
+        if [[ $? -ne 0 ]]; then
+            # Timeout - continuar esperando
+            continue
+        fi
+
         case "$char" in
-            "")  # Enter
-                echo ""
-                echo "$current_choice"
-                return
-                ;;
-            $'\e')  # Escape sequence
-                read -rsn2 -t 0.1 seq
+            $'\e')  # Escape sequence (flechas)
+                read -rsn2 -t 0.1 seq 2>/dev/null
                 case "$seq" in
                     "[A")  # Up arrow
                         if [[ $current_choice -gt $min_choice ]]; then
                             ((current_choice--))
+                            echo -ne "\r${prompt} [${min_choice}-${max_choice}]: ${current_choice}"
                         fi
                         ;;
                     "[B")  # Down arrow
                         if [[ $current_choice -lt $max_choice ]]; then
                             ((current_choice++))
-                        fi
-                        ;;
-                    "[C")  # Right arrow
-                        if [[ $current_choice -lt $max_choice ]]; then
-                            ((current_choice++))
-                        fi
-                        ;;
-                    "[D")  # Left arrow
-                        if [[ $current_choice -gt $min_choice ]]; then
-                            ((current_choice--))
+                            echo -ne "\r${prompt} [${min_choice}-${max_choice}]: ${current_choice}"
                         fi
                         ;;
                 esac
                 ;;
-            [0-9])
-                # Si es un dígito, reemplazar la selección actual
-                current_choice="$char"
+            [0-9])  # Número digitado
+                local num_input="$char"
+                echo -ne "\r${prompt} [${min_choice}-${max_choice}]: ${char}"
+
+                # Leer más dígitos si los hay
+                while true; do
+                    IFS= read -rsn1 -t 0.1 next_char 2>/dev/null
+                    if [[ $? -ne 0 ]]; then
+                        # Timeout - procesar lo que tenemos
+                        break
+                    fi
+                    if [[ "$next_char" =~ [0-9] ]]; then
+                        num_input="$num_input$next_char"
+                        echo -n "$next_char"
+                    elif [[ "$next_char" == "" ]]; then
+                        # Enter presionado
+                        break
+                    fi
+                done
+
+                # Validar y retornar el número
+                if [[ "$num_input" =~ ^[0-9]+$ ]] && [[ "$num_input" -ge "$min_choice" ]] && [[ "$num_input" -le "$max_choice" ]]; then
+                    echo ""
+                    echo "$num_input"
+                    return
+                else
+                    echo -e "\n${COLOR_RED}Invalid option: $num_input (must be between $min_choice and $max_choice)${COLOR_RESET}"
+                    echo -ne "${prompt} [${min_choice}-${max_choice}]: ${current_choice}"
+                fi
                 ;;
-            [a-zA-Z])
-                # Para opciones no numéricas, permitir entrada directa
-                echo -n "$char"
-                current_choice="$char"
+            "")  # Enter sin más input
+                echo ""
+                echo "$current_choice"
+                return
                 ;;
         esac
-        
-        # Limpiar línea y mostrar selección actual
-        echo -ne "\r${prompt} [${min_choice}-${max_choice}]: ${current_choice} "
     done
 }
 
-# --- Leer entrada de directorio con autocompletado básico / Read directory input with basic completion ---
-read_directory_input() {
-    local prompt="${1:-Enter directory}"
+# --- Leer entrada de texto con edición avanzada / Read text input with advanced editing ---
+read_line_edit() {
+    local prompt="${1:-Enter text}"
     local default="${2:-}"
-    local input=""
+    local input="${default}"
+    local cursor_pos=${#input}
     
+    # Mostrar prompt inicial
     echo -n "$prompt"
     [[ -n "$default" ]] && echo -n " [$default]"
-    echo -n ": "
+    echo -n ": $input"
     
     while true; do
+        # Leer un carácter
         local char
         IFS= read -rsn1 char
         
         case "$char" in
             "")  # Enter
                 echo ""
-                if [[ -z "$input" && -n "$default" ]]; then
-                    echo "$default"
-                else
-                    echo "$input"
-                fi
+                echo "$input"
                 return
                 ;;
-            $'\t')  # Tab - intentar autocompletado básico
-                if [[ -n "$input" ]]; then
-                    # Intentar completar directorios
+            $'\e')  # Escape sequence (flechas)
+                read -rsn2 -t 0.1 seq
+                case "$seq" in
+                    "[C")  # Right arrow
+                        if [[ $cursor_pos -lt ${#input} ]]; then
+                            ((cursor_pos++))
+                        fi
+                        ;;
+                    "[D")  # Left arrow
+                        if [[ $cursor_pos -gt 0 ]]; then
+                            ((cursor_pos--))
+                        fi
+                        ;;
+                    "[H")  # Home
+                        cursor_pos=0
+                        ;;
+                    "[F")  # End
+                        cursor_pos=${#input}
+                        ;;
+                esac
+                ;;
+            $'\t')  # Tab - autocompletado para directorios
+                if [[ -n "$input" ]] && [[ "$input" =~ ^/ ]]; then
                     local completions
                     completions=$(compgen -d "$input" 2>/dev/null)
                     if [[ $(echo "$completions" | wc -l) -eq 1 ]]; then
                         input="$completions"
-                        echo -n "$input"
+                        cursor_pos=${#input}
                     else
-                        # Si hay múltiples, mostrar opciones
                         echo ""
                         echo "Possible completions:"
                         echo "$completions" | head -10
                         echo -n "$prompt: $input"
+                        cursor_pos=${#input}
                     fi
                 fi
                 ;;
             $'\177')  # Backspace
-                if [[ -n "$input" ]]; then
-                    input="${input%?}"
-                    echo -ne "\b \b"
+                if [[ $cursor_pos -gt 0 ]]; then
+                    input="${input:0:$((cursor_pos-1))}${input:$cursor_pos}"
+                    ((cursor_pos--))
                 fi
                 ;;
-            *)
-                input="$input$char"
-                echo -n "$char"
+            $'\004')  # Ctrl+D (delete)
+                if [[ $cursor_pos -lt ${#input} ]]; then
+                    input="${input:0:$cursor_pos}${input:$((cursor_pos+1))}"
+                fi
+                ;;
+            *)  # Carácter normal
+                if [[ -n "$char" ]] && [[ "$char" != $'\n' ]]; then
+                    input="${input:0:$cursor_pos}$char${input:$cursor_pos}"
+                    ((cursor_pos++))
+                fi
                 ;;
         esac
+        
+        # Redibujar línea
+        echo -ne "\r\033[K$prompt"
+        [[ -n "$default" ]] && echo -n " [$default]"
+        echo -n ": $input"
+        
+        # Posicionar cursor
+        if [[ $cursor_pos -gt 0 ]]; then
+            echo -ne "\033[${cursor_pos}D"
+        fi
     done
 }
 
