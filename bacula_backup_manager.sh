@@ -421,10 +421,10 @@ show_banner() {
     echo "║     ██████╔╝██║  ██║╚██████╗╚██████╔╝███████╗██║  ██║                     ║"
     echo "║     ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝╚═╝  ╚═╝                     ║"
     echo "║                                                                           ║"
-    echo "║              ENTERPRISE BACKUP SOLUTION v${SCRIPT_VERSION}                        ║"
+    echo "║              ENTERPRISE BACKUP MANAGER SOLUTION v${SCRIPT_VERSION}        ║"
     echo "║                                                                           ║"
-    echo "║     Developer: ${AUTHOR}                  ║"
-    echo "║     ${TITLE}              ║"
+    echo "║     Developer: ${AUTHOR}                      ║"
+    echo "║     ${TITLE}                                  ║"
     echo "║                                                                           ║"
     echo "╚═══════════════════════════════════════════════════════════════════════════╝"
     echo -e "${COLOR_RESET}"
@@ -1867,7 +1867,7 @@ create_backup_job() {
     # Ruta de respaldo
     if [[ -z "$backup_path" ]]; then
         echo -e "${COLOR_BOLD}Backup Path / Ruta de Respaldo:${COLOR_RESET}"
-        read -rp "   $(t "select_option") [/backups]: " backup_path
+        backup_path=$(read_directory_input "   $(t "select_option")" "/backups")
         backup_path=${backup_path:-/backups}
     fi
     
@@ -1889,7 +1889,7 @@ create_backup_job() {
     local job_exclude_paths=()
     
     while true; do
-        read -rp "   $(t "select_option") [1-4]: " backup_type
+        backup_type=$(read_menu_choice "   $(t "select_option")" 1 4 1)
         case $backup_type in
             1)
                 job_include_paths=("/etc" "/home" "/var/www" "/usr/local")
@@ -1904,7 +1904,7 @@ create_backup_job() {
             3)
                 echo -e "   ${COLOR_CYAN}Enter directories to backup (one per line, empty to finish):${COLOR_RESET}"
                 while true; do
-                    read -rp "   Path: " custom_path
+                    custom_path=$(read_directory_input "   Path")
                     [[ -z "$custom_path" ]] && break
                     if [[ -d "$custom_path" ]]; then
                         job_include_paths+=("$custom_path")
@@ -1947,7 +1947,7 @@ create_backup_job() {
     echo "   3) $(t "strategy_mixed")"
     
     while true; do
-        read -rp "   $(t "select_option") [1-3]: " strategy_type
+        strategy_type=$(read_menu_choice "   $(t "select_option")" 1 3 3)
         case "$strategy_type" in
             1|2|3) break ;;
             *) echo -e "   ${COLOR_RED}$(t "invalid_option")${COLOR_RESET}" ;;
@@ -1973,7 +1973,7 @@ create_backup_job() {
         echo "   4) $(t "option_forever")"
         
         while true; do
-            read -rp "   $(t "select_option") [1-4]: " retention
+            retention=$(read_menu_choice "   $(t "select_option")" 1 4 1)
             case $retention in
                 1|2|3|4) break ;;
                 *) echo -e "   ${COLOR_RED}$(t "invalid_option")${COLOR_RESET}" ;;
@@ -2368,15 +2368,17 @@ open_bacula_ports() {
 # --- Verificar estado de puertos / Check port status ---
 check_bacula_ports() {
     local ports=("9101" "9102" "9103" "9104")
+    local port_names=("Director" "Storage" "File Daemon" "Console")
     local open_count=0
     
-    echo -e "${COLOR_BOLD}Bacula Port Status / Estado de Puertos Bacula:${COLOR_RESET}"
+    echo -e "${COLOR_BOLD}Bacula Port Configuration / Configuración de Puertos Bacula:${COLOR_RESET}"
     echo ""
-    echo -e "${COLOR_DIM}Note: These ports are used for Bacula communication between Director, Storage, and File daemons.${COLOR_RESET}"
-    echo -e "${COLOR_DIM}Notifications will include: port status, firewall rules, destination email, server info.${COLOR_RESET}"
+    echo -e "${COLOR_DIM}Bacula uses these ports for communication between components:${COLOR_RESET}"
     echo ""
     
-    for port in "${ports[@]}"; do
+    for i in "${!ports[@]}"; do
+        local port="${ports[$i]}"
+        local name="${port_names[$i]}"
         local port_status="CLOSED"
         local status_color="COLOR_RED"
         
@@ -2391,11 +2393,51 @@ check_bacula_ports() {
             ((open_count++))
         fi
         
-        echo -e "  Port $port: ${!status_color}$port_status${COLOR_RESET}"
+        echo -e "  ${name} (Port $port): ${!status_color}$port_status${COLOR_RESET}"
     done
     
     echo ""
     echo -e "  ${COLOR_BOLD}Open ports: $open_count/4${COLOR_RESET}"
+    echo ""
+    
+    # Mostrar configuración actual de puertos
+    echo -e "${COLOR_BOLD}Current Port Configuration / Configuración Actual de Puertos:${COLOR_RESET}"
+    echo ""
+    
+    # Buscar configuración en archivos de Bacula
+    local config_paths=("/etc/bacula" "/usr/local/etc/bacula" "/opt/bacula/etc")
+    local found_config=false
+    
+    for path in "${config_paths[@]}"; do
+        if [[ -f "$path/bacula-dir.conf" ]]; then
+            echo -e "  ${COLOR_CYAN}Director config ($path/bacula-dir.conf):${COLOR_RESET}"
+            grep -E "(Port|FDPort|SDPort)" "$path/bacula-dir.conf" 2>/dev/null | while read -r line; do
+                echo -e "    ${COLOR_DIM}$line${COLOR_RESET}"
+            done
+            found_config=true
+        fi
+        
+        if [[ -f "$path/bacula-sd.conf" ]]; then
+            echo -e "  ${COLOR_CYAN}Storage config ($path/bacula-sd.conf):${COLOR_RESET}"
+            grep -E "(Port|FDPort|SDPort)" "$path/bacula-sd.conf" 2>/dev/null | while read -r line; do
+                echo -e "    ${COLOR_DIM}$line${COLOR_RESET}"
+            done
+            found_config=true
+        fi
+        
+        if [[ -f "$path/bacula-fd.conf" ]]; then
+            echo -e "  ${COLOR_CYAN}File Daemon config ($path/bacula-fd.conf):${COLOR_RESET}"
+            grep -E "(Port|FDPort|SDPort)" "$path/bacula-fd.conf" 2>/dev/null | while read -r line; do
+                echo -e "    ${COLOR_DIM}$line${COLOR_RESET}"
+            done
+            found_config=true
+        fi
+    done
+    
+    if [[ "$found_config" == false ]]; then
+        echo -e "  ${COLOR_YELLOW}No Bacula configuration files found${COLOR_RESET}"
+    fi
+    
     echo ""
     
     # Verificar reglas de firewall
@@ -2967,7 +3009,7 @@ configure_bacula() {
     echo ""
     
     while true; do
-        read -rp "   $(t "select_option") [1-7]: " config_option
+        config_option=$(read_menu_choice "   $(t "select_option")" 1 7 1)
         case $config_option in
             1)
                 create_backup_job
@@ -3058,7 +3100,7 @@ configure_bacula_legacy() {
     # 3. Ruta de respaldos / Backup path
     echo -e "${COLOR_BOLD}3. $(t "ask_backup_path")${COLOR_RESET}"
     echo -e "   ${COLOR_DIM}$(t "explain_backup_path")${COLOR_RESET}"
-    read -rp "   $(t "select_option") [/backups]: " backup_path
+    backup_path=$(read_directory_input "   $(t "select_option")" "/backups")
     backup_path=${backup_path:-/backups}
     
     # Crear directorio si no existe / Create directory if not exists
@@ -3082,7 +3124,7 @@ configure_bacula_legacy() {
     echo "   4) $(t "option_databases")"
     
     while true; do
-        read -rp "   $(t "select_option") [1-4]: " backup_type
+        backup_type=$(read_menu_choice "   $(t "select_option")" 1 4 1)
         case $backup_type in
             1)
                 include_paths=("/etc" "/home" "/var/www" "/usr/local")
@@ -3097,7 +3139,7 @@ configure_bacula_legacy() {
             3)
                 echo -e "   ${COLOR_CYAN}Enter directories to backup (one per line, empty to finish):${COLOR_RESET}"
                 while true; do
-                    read -rp "   Path: " custom_path
+                    custom_path=$(read_directory_input "   Path")
                     [[ -z "$custom_path" ]] && break
                     if [[ -d "$custom_path" ]]; then
                         include_paths+=("$custom_path")
@@ -3145,7 +3187,7 @@ configure_bacula_legacy() {
     echo "   4) $(t "option_forever")"
     
     while true; do
-        read -rp "   $(t "select_option") [1-4]: " retention
+        retention=$(read_menu_choice "   $(t "select_option")" 1 4 1)
         case $retention in
             1|2|3|4) break ;;
             *) echo -e "   ${COLOR_RED}$(t "invalid_option")${COLOR_RESET}" ;;
@@ -3847,7 +3889,7 @@ restore_backup() {
     
     # Seleccionar destino / Select destination
     local restore_path
-    read -rp "   $(t "restore_destination") [/tmp/bacula-restores]: " restore_path
+    restore_path=$(read_directory_input "   $(t "restore_destination")" "/tmp/bacula-restores")
     restore_path=${restore_path:-/tmp/bacula-restores}
     
     # Crear directorio de restauración si no existe
@@ -3969,9 +4011,33 @@ view_status() {
         done
     fi
     
-    # Si no hay jobs configurados, mostrar legacy
+    # Buscar jobs en configuración de Bacula
+    if [[ -f /etc/bacula/bacula-dir.conf ]]; then
+        while IFS= read -r line; do
+            if [[ $line =~ Name[[:space:]]*=[[:space:]]*\"(.+)\" ]] && [[ ! $line =~ Restore_ ]]; then
+                local bacula_job_name="${BASH_REMATCH[1]}"
+                # Verificar si ya está en la lista del manager
+                local already_listed=false
+                for existing_job in "${configured_jobs[@]}"; do
+                    if [[ "$existing_job" == "$bacula_job_name" ]]; then
+                        already_listed=true
+                        break
+                    fi
+                done
+                if [[ "$already_listed" == false ]]; then
+                    configured_jobs+=("$bacula_job_name")
+                    ((job_count++))
+                    echo -e "  ${COLOR_GREEN}• $bacula_job_name (from Bacula config)${COLOR_RESET}"
+                    echo -e "    ${COLOR_DIM}Type: Bacula Job${COLOR_RESET}"
+                    echo ""
+                fi
+            fi
+        done < <(grep -iE '^Job[[:space:]]*\{' /etc/bacula/bacula-dir.conf 2>/dev/null -A 5 | grep "Name = " || echo "")
+    fi
+    
+    # Si no hay jobs configurados, mostrar mensaje
     if [[ $job_count -eq 0 ]]; then
-        echo -e "${COLOR_YELLOW}  No multi-jobs configured. Showing legacy status...${COLOR_RESET}"
+        echo -e "${COLOR_YELLOW}  No backup jobs found${COLOR_RESET}"
         echo ""
     fi
     
@@ -4124,17 +4190,36 @@ test_configuration() {
     
     # Test 1: Verificar archivos de configuración / Check config files
     echo -n "  $(t "msg_checking_config") "
-    if [[ -f /etc/bacula/bacula-dir.conf && -f /etc/bacula/bacula-sd.conf && -f /etc/bacula/bacula-fd.conf ]]; then
+    
+    # Buscar archivos de configuración en múltiples ubicaciones posibles
+    local bacula_dir_conf=""
+    local bacula_sd_conf=""
+    local bacula_fd_conf=""
+    
+    # Ubicaciones comunes de configuración de Bacula
+    local config_paths=("/etc/bacula" "/usr/local/etc/bacula" "/opt/bacula/etc")
+    
+    for path in "${config_paths[@]}"; do
+        [[ -f "$path/bacula-dir.conf" ]] && bacula_dir_conf="$path/bacula-dir.conf"
+        [[ -f "$path/bacula-sd.conf" ]] && bacula_sd_conf="$path/bacula-sd.conf"
+        [[ -f "$path/bacula-fd.conf" ]] && bacula_fd_conf="$path/bacula-fd.conf"
+    done
+    
+    # Verificar si se encontraron los archivos
+    if [[ -n "$bacula_dir_conf" && -n "$bacula_sd_conf" && -n "$bacula_fd_conf" ]]; then
         echo -e "${COLOR_GREEN}✓${COLOR_RESET}"
         ((tests_passed++))
     else
         echo -e "${COLOR_RED}✗${COLOR_RESET}"
+        echo -e "    ${COLOR_DIM}Director config: ${bacula_dir_conf:-Not found}${COLOR_RESET}"
+        echo -e "    ${COLOR_DIM}Storage config: ${bacula_sd_conf:-Not found}${COLOR_RESET}"
+        echo -e "    ${COLOR_DIM}File daemon config: ${bacula_fd_conf:-Not found}${COLOR_RESET}"
         ((tests_failed++))
     fi
     
     # Test 2: Validar sintaxis / Validate syntax
     echo -n "  $(t "msg_validating_syntax") "
-    if bacula-dir -t -c /etc/bacula/bacula-dir.conf 2>/dev/null; then
+    if [[ -n "$bacula_dir_conf" ]] && bacula-dir -t -c "$bacula_dir_conf" 2>/dev/null; then
         echo -e "${COLOR_GREEN}✓${COLOR_RESET}"
         ((tests_passed++))
     else
@@ -4717,7 +4802,7 @@ configure_remote_backup() {
     # 4. Ruta remota
     echo -e "${COLOR_BOLD}4. $(t "ask_remote_path")${COLOR_RESET}"
     echo -e "   ${COLOR_DIM}$(t "explain_remote_path")${COLOR_RESET}"
-    read -rp "   $(t "select_option") [/backups/remote]: " remote_path
+    remote_path=$(read_directory_input "   $(t "select_option")" "/backups/remote")
     remote_path=${remote_path:-/backups/remote}
     echo ""
     
@@ -5012,15 +5097,136 @@ test_network_connectivity() {
     
     if [[ -n "$target_host" ]]; then
         echo ""
-        verify_network_connectivity "$target_host" 22 10
+        if ! verify_network_connectivity "$target_host" 22 10; then
+            echo -e "${COLOR_YELLOW}Network test completed with issues${COLOR_RESET}"
+        fi
+    else
+        echo -e "${COLOR_YELLOW}No host specified, skipping network test${COLOR_RESET}"
     fi
     
+    echo ""
     read -rp "$(t "press_continue")"
 }
 
 # =============================================================================
 # MENÚ PRINCIPAL / MAIN MENU
 # =============================================================================
+
+# --- Leer selección de menú con navegación por flechas / Read menu choice with arrow navigation ---
+read_menu_choice() {
+    local prompt="${1:-Select option}"
+    local min_choice="${2:-0}"
+    local max_choice="${3:-15}"
+    local current_choice="${4:-1}"
+    
+    echo -ne "\r${prompt} [${min_choice}-${max_choice}]: ${current_choice} "
+    
+    while true; do
+        # Leer un carácter sin echo
+        local char
+        IFS= read -rsn1 char
+        
+        case "$char" in
+            "")  # Enter
+                echo ""
+                echo "$current_choice"
+                return
+                ;;
+            $'\e')  # Escape sequence
+                read -rsn2 -t 0.1 seq
+                case "$seq" in
+                    "[A")  # Up arrow
+                        if [[ $current_choice -gt $min_choice ]]; then
+                            ((current_choice--))
+                        fi
+                        ;;
+                    "[B")  # Down arrow
+                        if [[ $current_choice -lt $max_choice ]]; then
+                            ((current_choice++))
+                        fi
+                        ;;
+                    "[C")  # Right arrow
+                        if [[ $current_choice -lt $max_choice ]]; then
+                            ((current_choice++))
+                        fi
+                        ;;
+                    "[D")  # Left arrow
+                        if [[ $current_choice -gt $min_choice ]]; then
+                            ((current_choice--))
+                        fi
+                        ;;
+                esac
+                ;;
+            [0-9])
+                # Si es un dígito, reemplazar la selección actual
+                current_choice="$char"
+                ;;
+            [a-zA-Z])
+                # Para opciones no numéricas, permitir entrada directa
+                echo -n "$char"
+                current_choice="$char"
+                ;;
+        esac
+        
+        # Limpiar línea y mostrar selección actual
+        echo -ne "\r${prompt} [${min_choice}-${max_choice}]: ${current_choice} "
+    done
+}
+
+# --- Leer entrada de directorio con autocompletado básico / Read directory input with basic completion ---
+read_directory_input() {
+    local prompt="${1:-Enter directory}"
+    local default="${2:-}"
+    local input=""
+    
+    echo -n "$prompt"
+    [[ -n "$default" ]] && echo -n " [$default]"
+    echo -n ": "
+    
+    while true; do
+        local char
+        IFS= read -rsn1 char
+        
+        case "$char" in
+            "")  # Enter
+                echo ""
+                if [[ -z "$input" && -n "$default" ]]; then
+                    echo "$default"
+                else
+                    echo "$input"
+                fi
+                return
+                ;;
+            $'\t')  # Tab - intentar autocompletado básico
+                if [[ -n "$input" ]]; then
+                    # Intentar completar directorios
+                    local completions
+                    completions=$(compgen -d "$input" 2>/dev/null)
+                    if [[ $(echo "$completions" | wc -l) -eq 1 ]]; then
+                        input="$completions"
+                        echo -n "$input"
+                    else
+                        # Si hay múltiples, mostrar opciones
+                        echo ""
+                        echo "Possible completions:"
+                        echo "$completions" | head -10
+                        echo -n "$prompt: $input"
+                    fi
+                fi
+                ;;
+            $'\177')  # Backspace
+                if [[ -n "$input" ]]; then
+                    input="${input%?}"
+                    echo -ne "\b \b"
+                fi
+                ;;
+            *)
+                input="$input$char"
+                echo -n "$char"
+                ;;
+        esac
+    done
+}
 
 show_menu() {
     show_banner
@@ -5050,13 +5256,27 @@ show_menu() {
 
     # Extra brief status of services continuously
     echo -e "  ${COLOR_DIM}Services:${COLOR_RESET}"
+    local services_stopped=false
     for svc in bacula-dir bacula-sd bacula-fd; do
         if systemctl is-active --quiet $svc 2>/dev/null; then
             echo -e "    ${COLOR_GREEN}✓ $svc is running${COLOR_RESET}"
         else
             echo -e "    ${COLOR_RED}✗ $svc is stopped${COLOR_RESET}"
+            services_stopped=true
         fi
     done
+    
+    # Try to start stopped services automatically
+    if [[ "$services_stopped" == true ]]; then
+        echo -e "  ${COLOR_YELLOW}Attempting to start stopped services...${COLOR_RESET}"
+        for svc in bacula-dir bacula-sd bacula-fd; do
+            if ! systemctl is-active --quiet $svc 2>/dev/null; then
+                if systemctl start $svc 2>/dev/null; then
+                    echo -e "    ${COLOR_GREEN}✓ $svc started${COLOR_RESET}"
+                fi
+            fi
+        done
+    fi
     echo ""
     
     # Language toggle option
@@ -5101,7 +5321,7 @@ main() {
     while true; do
         show_menu
         
-        read -rp "   $(t "select_option") [0-15]: " choice
+        choice=$(read_menu_choice "   $(t "select_option")" 0 15 1)
         
         case $choice in
             1) 
@@ -5136,7 +5356,14 @@ main() {
                 ;;
             *) 
                 echo -e "${COLOR_RED}   $(t "invalid_option")${COLOR_RESET}"
-                sleep 1
+                echo ""
+                echo -e "  ${COLOR_CYAN}0)${COLOR_RESET} $(t "back")"
+                echo ""
+                read -rp "   $(t "select_option") [0]: " back_choice
+                case $back_choice in
+                    0|"") continue ;;
+                    *) continue ;;
+                esac
                 ;;
         esac
     done
