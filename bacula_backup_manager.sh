@@ -421,9 +421,9 @@ show_banner() {
     echo "║     ██████╔╝██║  ██║╚██████╗╚██████╔╝███████╗██║  ██║                     ║"
     echo "║     ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝╚═╝  ╚═╝                     ║"
     echo "║                                                                           ║"
-    echo "║              ENTERPRISE BACKUP MANAGER SOLUTION v${SCRIPT_VERSION}                  ║"
+    echo "║              ENTERPRISE BACKUP MANAGER SOLUTION v${SCRIPT_VERSION}                      ║"
     echo "║                                                                           ║"
-    echo "║     Developer: ${AUTHOR}                                 ║"
+    echo "║     Developer: ${AUTHOR}                                      ║"
     echo "║     ${TITLE}                              ║"
     echo "║                                                                           ║"
     echo "╚═══════════════════════════════════════════════════════════════════════════╝"
@@ -5124,7 +5124,7 @@ read_menu_choice() {
     while true; do
         # Leer entrada del usuario
         local input
-        read -r input
+        read -re input
 
         # Si no hay entrada (solo Enter), usar selección actual
         if [[ -z "$input" ]]; then
@@ -5235,6 +5235,58 @@ read_line_edit() {
     done
 }
 
+# --- Reparar permisos de Bacula / Fix Bacula permissions ---
+fix_bacula_permissions() {
+    # Crear usuario/grupo bacula si no existen
+    if ! getent group bacula >/dev/null 2>&1; then
+        groupadd bacula 2>/dev/null || true
+    fi
+    if ! getent passwd bacula >/dev/null 2>&1; then
+        useradd -g bacula -d /var/lib/bacula -s /bin/false bacula 2>/dev/null || true
+    fi
+    
+    # Directorios de configuración
+    if [[ -d /etc/bacula ]]; then
+        chown -R root:bacula /etc/bacula 2>/dev/null || true
+        chmod 755 /etc/bacula 2>/dev/null || true
+        chmod 640 /etc/bacula/*.conf 2>/dev/null || true
+    fi
+    
+    # Directorio de trabajo (working directory) - CRÍTICO
+    mkdir -p /var/lib/bacula 2>/dev/null || true
+    chown -R bacula:bacula /var/lib/bacula 2>/dev/null || true
+    chmod 755 /var/lib/bacula 2>/dev/null || true
+    
+    # Directorio de logs
+    mkdir -p /var/log/bacula 2>/dev/null || true
+    chown -R bacula:bacula /var/log/bacula 2>/dev/null || true
+    chmod 755 /var/log/bacula 2>/dev/null || true
+    
+    # Directorio de PID
+    mkdir -p /run/bacula /var/run/bacula 2>/dev/null || true
+    chown -R bacula:bacula /run/bacula /var/run/bacula 2>/dev/null || true
+    chmod 755 /run/bacula /var/run/bacula 2>/dev/null || true
+    
+    # Script directory (para PostgreSQL scripts)
+    mkdir -p /etc/bacula/scripts 2>/dev/null || true
+    chown -R bacula:bacula /etc/bacula/scripts 2>/dev/null || true
+    chmod 755 /etc/bacula/scripts 2>/dev/null || true
+    
+    # Backup path (si existe configuración)
+    if [[ -f "$CONFIG_DIR/manager.conf" ]]; then
+        source "$CONFIG_DIR/manager.conf" 2>/dev/null
+        if [[ -n "$BACKUP_PATH" ]] && [[ -d "$BACKUP_PATH" ]]; then
+            chown -R bacula:bacula "$BACKUP_PATH" 2>/dev/null || true
+            chmod 755 "$BACKUP_PATH" 2>/dev/null || true
+        fi
+    fi
+    
+    # Archivos de log específicos
+    touch /var/log/bacula/bacula.log 2>/dev/null || true
+    chown bacula:bacula /var/log/bacula/bacula.log 2>/dev/null || true
+    chmod 644 /var/log/bacula/bacula.log 2>/dev/null || true
+}
+
 show_menu() {
     show_banner
     
@@ -5278,8 +5330,23 @@ show_menu() {
         echo -e "  ${COLOR_YELLOW}Attempting to start stopped services...${COLOR_RESET}"
         for svc in bacula-dir bacula-sd bacula-fd; do
             if ! systemctl is-active --quiet $svc 2>/dev/null; then
+                # Check if service exists first
+                if ! systemctl list-unit-files | grep -q "^${svc}.service"; then
+                    echo -e "    ${COLOR_YELLOW}⚠ $svc service not installed${COLOR_RESET}"
+                    continue
+                fi
                 if systemctl start $svc 2>/dev/null; then
                     echo -e "    ${COLOR_GREEN}✓ $svc started${COLOR_RESET}"
+                else
+                    echo -e "    ${COLOR_RED}✗ $svc failed to start${COLOR_RESET}"
+                    # Try to fix permissions and restart
+                    echo -e "    ${COLOR_YELLOW}  Attempting to fix permissions...${COLOR_RESET}"
+                    fix_bacula_permissions >/dev/null 2>&1
+                    if systemctl start $svc 2>/dev/null; then
+                        echo -e "    ${COLOR_GREEN}✓ $svc started after fixing permissions${COLOR_RESET}"
+                    else
+                        echo -e "    ${COLOR_RED}✗ $svc still failed (check: systemctl status $svc)${COLOR_RESET}"
+                    fi
                 fi
             fi
         done
