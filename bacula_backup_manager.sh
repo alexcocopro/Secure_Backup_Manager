@@ -5236,16 +5236,7 @@ read_line_edit() {
 }
 
 show_menu() {
-    echo "DEBUG: In show_menu"
     show_banner
-    echo "DEBUG: Banner shown, simplifying menu for debug"
-    
-    echo -e "${COLOR_BOLD}${COLOR_BLUE}MENU${COLOR_RESET}"
-    echo ""
-    echo "  1) Option 1"
-    echo "  0) Exit"
-    echo ""
-}
     
     local lang_indicator="🇪🇸"
     [[ "$APP_LANG" == "en" ]] && lang_indicator="🇺🇸"
@@ -5330,18 +5321,12 @@ show_menu() {
 
 # --- Bucle principal / Main loop ---
 main() {
-    echo "DEBUG: Starting main function"
     check_root
-    echo "DEBUG: Root check passed"
     check_lock
-    echo "DEBUG: Lock check passed"
     load_language
-    echo "DEBUG: Language loaded"
     
     while true; do
-        echo "DEBUG: About to show menu"
         show_menu
-        echo "DEBUG: Menu shown, about to read choice"
         
         choice=$(read_menu_choice "   $(t "select_option")" 0 15 1)
         
