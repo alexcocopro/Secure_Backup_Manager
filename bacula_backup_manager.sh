@@ -2126,6 +2126,18 @@ Schedule {
     $schedule_lines
 }
 
+# Client resource for job: $job_name
+Client {
+    Name = $(hostname -s)-fd
+    Address = 127.0.0.1
+    FDPort = 9102
+    Catalog = MyCatalog
+    Password = "$(generate_password)"
+    File Retention = 30 days
+    Job Retention = 6 months
+    AutoPrune = yes
+}
+
 # Job: $job_name
 Job {
     Name = "$job_name"
@@ -2286,6 +2298,7 @@ delete_backup_job() {
         sed -i "/# FileSet for job: $job_name/,/^$/d" /etc/bacula/bacula-dir.conf
         sed -i "/# Schedule for job: $job_name/,/^$/d" /etc/bacula/bacula-dir.conf
         sed -i "/# Restore job for: $job_name/,/^$/d" /etc/bacula/bacula-dir.conf
+        sed -i "/# Client resource for job: $job_name/,/^$/d" /etc/bacula/bacula-dir.conf
         
         # Reiniciar servicios - con pre-flight check y diagnóstico detallado
         echo -e "${COLOR_CYAN}Restarting Director service to apply changes...${COLOR_RESET}"
