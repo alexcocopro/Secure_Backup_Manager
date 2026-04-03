@@ -5112,35 +5112,32 @@ test_network_connectivity() {
 # MENÚ PRINCIPAL / MAIN MENU
 # =============================================================================
 
-# --- Leer selección de menú con navegación por flechas / Read menu choice with arrow navigation ---
+# --- Leer selección de menú simplificado / Simple menu input ---
 read_menu_choice() {
     local prompt="${1:-Select option}"
     local min_choice="${2:-0}"
     local max_choice="${3:-15}"
-    local current_choice="${4:-1}"
-
-    echo -ne "${prompt} [${min_choice}-${max_choice}] (current: ${current_choice}): "
+    local default_choice="${4:-1}"
+    local input
 
     while true; do
-        # Leer entrada del usuario
-        local input
-        read -re input
-
-        # Si no hay entrada (solo Enter), usar selección actual
+        echo -ne "${prompt} [${min_choice}-${max_choice}]: "
+        read -r input
+        
+        # Si no hay entrada, usar default
         if [[ -z "$input" ]]; then
-            echo "$current_choice"
-            return
+            input="$default_choice"
         fi
-
-        # Si es un número válido, retornarlo
-        if [[ "$input" =~ ^[0-9]+$ ]] && [[ "$input" -ge "$min_choice" ]] && [[ "$input" -le "$max_choice" ]]; then
-            echo "$input"
-            return
+        
+        # Validar que sea número
+        if [[ "$input" =~ ^[0-9]+$ ]]; then
+            if [[ "$input" -ge "$min_choice" ]] && [[ "$input" -le "$max_choice" ]]; then
+                echo "$input"
+                return 0
+            fi
         fi
-
-        # Si no es válido, mostrar error y pedir de nuevo
-        echo -e "${COLOR_RED}Invalid option: $input (must be between $min_choice and $max_choice)${COLOR_RESET}"
-        echo -ne "${prompt} [${min_choice}-${max_choice}] (current: ${current_choice}): "
+        
+        echo -e "${COLOR_RED}Invalid option. Please enter a number between ${min_choice} and ${max_choice}.${COLOR_RESET}"
     done
 }
 
@@ -5301,7 +5298,11 @@ show_menu() {
     # Verificar estado de instalación y remoto / Check installation and remote status
     local install_status="${COLOR_RED}✗ Not installed${COLOR_RESET}"
     local remote_status=""
-    is_bacula_installed && install_status="${COLOR_GREEN}✓ Installed${COLOR_RESET}"
+    local bacula_installed=false
+    if is_bacula_installed; then
+        install_status="${COLOR_GREEN}✓ Installed${COLOR_RESET}"
+        bacula_installed=true
+    fi
     
     if [[ -f "$REMOTE_CONFIG_DIR/active.conf" ]]; then
         remote_status=" | ${COLOR_GREEN}🌐 Remote${COLOR_RESET}"
@@ -5353,6 +5354,17 @@ show_menu() {
     fi
     echo ""
     
+    # Si Bacula no está instalado, mostrar mensaje prominente
+    if [[ "$bacula_installed" == false ]]; then
+        echo -e "${COLOR_RED}╔═══════════════════════════════════════════════════════════════════════════╗${COLOR_RESET}"
+        echo -e "${COLOR_RED}║  ⚠ BACULA IS NOT INSTALLED                                               ║${COLOR_RESET}"
+        echo -e "${COLOR_RED}║                                                                            ║${COLOR_RESET}"
+        echo -e "${COLOR_RED}║  Please select option 2 to install Bacula first.                          ║${COLOR_RESET}"
+        echo -e "${COLOR_RED}║  Options 3-15 require Bacula to be installed.                            ║${COLOR_RESET}"
+        echo -e "${COLOR_RED}╚═══════════════════════════════════════════════════════════════════════════╝${COLOR_RESET}"
+        echo ""
+    fi
+    
     # Language toggle option
     local lang_toggle
     if [[ "$APP_LANG" == "en" ]]; then
@@ -5395,7 +5407,7 @@ main() {
     while true; do
         show_menu
         
-        choice=$(read_menu_choice "   $(t "select_option")" 0 15 1)
+        choice=$(read_menu_choice "   Select option" 0 15 1)
         
         case $choice in
             1) 
@@ -5407,12 +5419,54 @@ main() {
                 continue
                 ;;
             2) install_bacula && configure_bacula ;;
-            3) run_backup ;;
-            4) restore_backup ;;
-            5) view_status ;;
-            6) configure_bacula ;;
-            7) view_logs ;;
-            8) test_configuration ;;
+            3) 
+                if [[ "$bacula_installed" == false ]]; then
+                    echo -e "${COLOR_RED}Error: Bacula is not installed. Please install first (option 2).${COLOR_RESET}"
+                    read -rp "Press Enter to continue..."
+                else
+                    run_backup
+                fi
+                ;;
+            4) 
+                if [[ "$bacula_installed" == false ]]; then
+                    echo -e "${COLOR_RED}Error: Bacula is not installed. Please install first (option 2).${COLOR_RESET}"
+                    read -rp "Press Enter to continue..."
+                else
+                    restore_backup
+                fi
+                ;;
+            5) 
+                if [[ "$bacula_installed" == false ]]; then
+                    echo -e "${COLOR_RED}Error: Bacula is not installed. Please install first (option 2).${COLOR_RESET}"
+                    read -rp "Press Enter to continue..."
+                else
+                    view_status
+                fi
+                ;;
+            6) 
+                if [[ "$bacula_installed" == false ]]; then
+                    echo -e "${COLOR_RED}Error: Bacula is not installed. Please install first (option 2).${COLOR_RESET}"
+                    read -rp "Press Enter to continue..."
+                else
+                    configure_bacula
+                fi
+                ;;
+            7) 
+                if [[ "$bacula_installed" == false ]]; then
+                    echo -e "${COLOR_RED}Error: Bacula is not installed. Please install first (option 2).${COLOR_RESET}"
+                    read -rp "Press Enter to continue..."
+                else
+                    view_logs
+                fi
+                ;;
+            8) 
+                if [[ "$bacula_installed" == false ]]; then
+                    echo -e "${COLOR_RED}Error: Bacula is not installed. Please install first (option 2).${COLOR_RESET}"
+                    read -rp "Press Enter to continue..."
+                else
+                    test_configuration
+                fi
+                ;;
             9) configure_remote_backup ;;
             10) manage_ssh_keys ;;
             11) test_network_connectivity ;;
