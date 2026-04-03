@@ -2138,6 +2138,17 @@ Client {
     AutoPrune = yes
 }
 
+# Storage resource for job: $job_name
+Storage {
+    Name = $storage_name
+    Address = 127.0.0.1
+    SDPort = 9103
+    Password = "$(generate_password)"
+    Device = FileStorage
+    Media Type = File
+    Maximum Concurrent Jobs = 10
+}
+
 # Job: $job_name
 Job {
     Name = "$job_name"
@@ -2299,6 +2310,7 @@ delete_backup_job() {
         sed -i "/# Schedule for job: $job_name/,/^$/d" /etc/bacula/bacula-dir.conf
         sed -i "/# Restore job for: $job_name/,/^$/d" /etc/bacula/bacula-dir.conf
         sed -i "/# Client resource for job: $job_name/,/^$/d" /etc/bacula/bacula-dir.conf
+        sed -i "/# Storage resource for job: $job_name/,/^$/d" /etc/bacula/bacula-dir.conf
         
         # Reiniciar servicios - con pre-flight check y diagnóstico detallado
         echo -e "${COLOR_CYAN}Restarting Director service to apply changes...${COLOR_RESET}"
