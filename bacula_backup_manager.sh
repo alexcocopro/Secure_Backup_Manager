@@ -1920,9 +1920,89 @@ EOF
     return 0
 }
 
-# =============================================================================
-# FUNCIONES DE CONFIGURACIÓN MÚLTIPLE / MULTI-BACKUP CONFIGURATION FUNCTIONS
-# =============================================================================
+# --- Eliminar recursos Client duplicados / Remove duplicate Client resources ---
+fix_duplicate_clients() {
+    local config_file="/etc/bacula/bacula-dir.conf"
+    
+    if [[ ! -f "$config_file" ]]; then
+        echo -e "${COLOR_RED}✗ Config file not found: $config_file${COLOR_RESET}"
+        return 1
+    fi
+    
+    echo -e "${COLOR_CYAN}Checking for duplicate Client resources...${COLOR_RESET}"
+    
+    # Extraer todos los nombres de Client y contar ocurrencias
+    local client_names=$(grep -E "^\s*Name\s*=" "$config_file" | grep -A1 "Client {" | grep "Name" | sed 's/.*=\s*"\([^"]*\)".*/\1/' | sort)
+    local duplicates=$(echo "$client_names" | uniq -d)
+    
+    if [[ -z "$duplicates" ]]; then
+        echo -e "   ${COLOR_GREEN}✓ No duplicate Client resources found${COLOR_RESET}"
+        return 0
+    fi
+    
+    echo -e "   ${COLOR_YELLOW}⚠ Found duplicate Client resources:${COLOR_RESET}"
+    echo "$duplicates" | while read -r dup; do
+        echo -e "      ${COLOR_RED}- $dup${COLOR_RESET}"
+    done
+    
+    # Crear backup
+    local backup_file="${config_file}.backup.$(date +%Y%m%d%H%M%S)"
+    cp "$config_file" "$backup_file"
+    echo -e "   ${COLOR_DIM}Backup created: $backup_file${COLOR_RESET}"
+    
+    # Eliminar duplicados, manteniendo solo la primera ocurrencia de cada Client
+    local temp_file=$(mktemp)
+    local in_client=false
+    local client_name=""
+    local seen_clients=""
+    local skip_block=false
+    
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^Client[[:space:]]*\{ ]]; then
+            in_client=true
+            client_name=""
+            skip_block=false
+            echo "$line" >> "$temp_file"
+        elif [[ "$in_client" == true && "$line" =~ ^\s*Name[[:space:]]*="([^\"]+)" ]]; then
+            client_name="${BASH_REMATCH[1]}"
+            if echo "$seen_clients" | grep -q "^${client_name}$"; then
+                # Duplicado encontrado, eliminar este bloque
+                skip_block=true
+                in_client=false
+                # Eliminar la línea "Client {" que ya escribimos
+                sed -i '$d' "$temp_file"
+                echo -e "   ${COLOR_YELLOW}Removing duplicate Client: $client_name${COLOR_RESET}"
+            else
+                seen_clients="${seen_clients}${client_name}
+"
+                echo "$line" >> "$temp_file"
+            fi
+        elif [[ "$line" =~ ^\} && "$in_client" == true ]]; then
+            in_client=false
+            if [[ "$skip_block" == false ]]; then
+                echo "$line" >> "$temp_file"
+            fi
+        elif [[ "$skip_block" == false ]]; then
+            echo "$line" >> "$temp_file"
+        fi
+    done < "$config_file"
+    
+    # Reemplazar archivo original
+    mv "$temp_file" "$config_file"
+    chmod 640 "$config_file"
+    chown root:bacula "$config_file" 2>/dev/null || true
+    
+    echo -e "   ${COLOR_GREEN}✓ Duplicate Client resources removed${COLOR_RESET}"
+    echo -e "   ${COLOR_INFO}Testing configuration...${COLOR_RESET}"
+    
+    if bacula-dir -t -c "$config_file" 2>/dev/null; then
+        echo -e "   ${COLOR_GREEN}✓ Configuration is valid${COLOR_RESET}"
+    else
+        echo -e "   ${COLOR_YELLOW}⚠ Please check configuration manually${COLOR_RESET}"
+    fi
+    
+    return 0
+}
 
 # --- Crear nuevo Job de respaldo / Create new backup job ---
 create_backup_job() {
@@ -5699,6 +5779,7 @@ show_menu() {
     echo -e "  ${COLOR_CYAN}14)${COLOR_RESET} $(t "menu_email_status")"
     echo -e "  ${COLOR_CYAN}15)${COLOR_RESET} $(t "menu_port_management")"
     echo -e "  ${COLOR_CYAN}16)${COLOR_RESET} Fix Database Password Sync / Corregir Sync Contraseña BD"
+    echo -e "  ${COLOR_CYAN}17)${COLOR_RESET} Fix Duplicate Clients / Corregir Clientes Duplicados"
     echo ""
     echo -e "  ${COLOR_RED}0)${COLOR_RESET} $(t "menu_exit")"
     echo ""
@@ -5720,7 +5801,7 @@ main() {
             bacula_installed_check=true
         fi
         
-        choice=$(read_menu_choice "   Select option" 0 16 1)
+        choice=$(read_menu_choice "   Select option" 0 17 1)
         
         case $choice in
             1) 
@@ -5788,6 +5869,7 @@ main() {
             14) view_notification_status ;;
             15) check_bacula_ports ;;
             16) fix_bacula_db_password_sync && read -rp "Press Enter to continue..." ;;
+            17) fix_duplicate_clients && read -rp "Press Enter to continue..." ;;
             0) 
                 if confirm "$(t "exit_confirm")"; then
                     echo ""
