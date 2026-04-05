@@ -2583,6 +2583,7 @@ EOF
     done
     
     cat >> /etc/bacula/bacula-dir.conf << EOF
+    }
 }
 
 # Schedule for job: $job_name
