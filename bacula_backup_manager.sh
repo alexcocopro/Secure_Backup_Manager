@@ -2583,20 +2583,6 @@ EOF
     done
     
     cat >> /etc/bacula/bacula-dir.conf << EOF
-    }
-    Exclude {
-        File = /proc
-        File = /sys
-        File = /dev
-        File = /run
-        File = /tmp
-        File = /var/tmp
-        File = /var/lib/bacula
-        File = *.tmp
-        File = *.temp
-        File = *.log
-        File = *.pid
-    }
 }
 
 # Schedule for job: $job_name
@@ -2605,25 +2591,28 @@ Schedule {
     $schedule_lines
 }
 
-  local client_name="$(hostname -s)-fd"
+EOF
+    
+    local client_name="$(hostname -s)-fd"
     local storage_name="File1"
     
     # Verificar si Client ya existe
     local client_exists=false
-    if grep -q "Name = $client_name" /etc/bacula/bacula-dir.conf 2>/dev/null; then
+    if grep -q "Name = $client_name" /etc/bacula/bacula-dir.conf 2>/dev/null | grep -B1 "Client {" | grep -q "Name"; then
         client_exists=true
+        echo -e "   ${COLOR_DIM}Using existing Client: $client_name${COLOR_RESET}"
     fi
     
     # Verificar si Storage ya existe  
     local storage_exists=false
-    if grep -q "Name = $storage_name" /etc/bacula/bacula-dir.conf 2>/dev/null | grep -q "Storage {"; then
+    if grep -q "Name = $storage_name" /etc/bacula/bacula-dir.conf 2>/dev/null | grep -B1 "Storage {" | grep -q "Name"; then
         storage_exists=true
+        echo -e "   ${COLOR_DIM}Using existing Storage: $storage_name${COLOR_RESET}"
     fi
     
     # Solo crear Client si no existe
     if [[ "$client_exists" == false ]]; then
         cat >> /etc/bacula/bacula-dir.conf << EOF
-
 # Client resource for job: $job_name
 Client {
     Name = $client_name
@@ -2635,13 +2624,13 @@ Client {
     Job Retention = 6 months
     AutoPrune = yes
 }
+
 EOF
     fi
     
     # Solo crear Storage si no existe
     if [[ "$storage_exists" == false ]]; then
         cat >> /etc/bacula/bacula-dir.conf << EOF
-
 # Storage resource for job: $job_name
 Storage {
     Name = $storage_name
@@ -2652,11 +2641,11 @@ Storage {
     Media Type = File
     Maximum Concurrent Jobs = 10
 }
+
 EOF
     fi
     
     cat >> /etc/bacula/bacula-dir.conf << EOF
-
 # Job: $job_name
 Job {
     Name = "$job_name"
