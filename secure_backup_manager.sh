@@ -56,6 +56,7 @@ t() {
         verify) [[ "$APP_LANG" == "en" ]] && echo "Verify backup" || echo "Verificar respaldo" ;;
         restore) [[ "$APP_LANG" == "en" ]] && echo "Restore backup" || echo "Restaurar respaldo" ;;
         ssh_key) [[ "$APP_LANG" == "en" ]] && echo "Show SSH public key" || echo "Mostrar llave publica SSH" ;;
+        delete_job) [[ "$APP_LANG" == "en" ]] && echo "Delete backup job" || echo "Eliminar trabajo de respaldo" ;;
         language) [[ "$APP_LANG" == "en" ]] && echo "Language / Idioma" || echo "Idioma / Language" ;;
         exit) [[ "$APP_LANG" == "en" ]] && echo "Exit" || echo "Salir" ;;
         option) [[ "$APP_LANG" == "en" ]] && echo "Option" || echo "Opcion" ;;
@@ -91,6 +92,7 @@ Uso:
   sudo ./${APP_NAME}.sh verify JOB_ID BACKUP_ID
   sudo ./${APP_NAME}.sh restore JOB_ID BACKUP_ID /ruta/destino
   sudo ./${APP_NAME}.sh remote-key JOB_ID
+  sudo ./${APP_NAME}.sh delete JOB_ID
   sudo ./${APP_NAME}.sh menu
 
 Ejemplos de calendario systemd:
@@ -752,6 +754,34 @@ EOF
     ok "Timers instalados y persistentes para $JOB_ID"
 }
 
+remove_timers() {
+    require_root
+    local job_id="${1:-}"
+    local safe_id
+    safe_id="$(safe_job_id "$job_id")"
+    [[ -n "$safe_id" ]] || die "Falta JOB_ID"
+
+    local units=(
+        "${APP_NAME}-${safe_id}-full.timer"
+        "${APP_NAME}-${safe_id}-incremental.timer"
+        "${APP_NAME}-${safe_id}-full.service"
+        "${APP_NAME}-${safe_id}-incremental.service"
+    )
+    local unit path
+
+    for unit in "${units[@]}"; do
+        systemctl disable --now "$unit" >/dev/null 2>&1 || true
+    done
+
+    for unit in "${units[@]}"; do
+        path="/etc/systemd/system/${unit}"
+        [[ -f "$path" ]] && rm -f "$path"
+    done
+
+    systemctl daemon-reload >/dev/null 2>&1 || true
+    systemctl reset-failed >/dev/null 2>&1 || true
+}
+
 generate_ssh_key() {
     require_root
     local job_id="${1:-}"
@@ -914,6 +944,83 @@ verification_summary() {
         "Total" "$total" "$(t verified)" "$verified" "$(t not_verified)" "$not_verified"
 }
 
+print_list_file() {
+    local title="$1"
+    local file="$2"
+    echo "$title:"
+    if [[ -f "$file" ]] && grep -Ev '^[[:space:]]*($|#)' "$file" >/dev/null 2>&1; then
+        while IFS= read -r item; do
+            echo "  - $item"
+        done < <(read_list "$file")
+    else
+        echo "  - none / ninguno"
+    fi
+}
+
+show_job_config() {
+    local job_id="${1:-}"
+    load_job "$job_id"
+
+    echo "Configuracion / Configuration"
+    echo "  JOB_ID: $JOB_ID"
+    echo "  Nombre / Name: $JOB_NAME"
+    echo "  Ruta local / Local path: $BACKUP_ROOT"
+    echo "  Retencion / Retention: ${RETENTION_DAYS} dias/days"
+    echo "  Base de datos / Database: $DB_TYPE"
+    echo "  Modo DB / DB mode: $DB_MODE"
+    echo "  Completo / Full: $FULL_CALENDAR"
+    echo "  Incremental: $INCREMENTAL_CALENDAR"
+    echo "  Remoto / Remote enabled: $REMOTE_ENABLED"
+    echo "  Destino remoto / Remote destination: ${REMOTE_DEST:-none}"
+    echo "  Puerto SSH / SSH port: $SSH_PORT"
+    echo "  Llave SSH / SSH key: $SSH_KEY"
+    echo "  Email: ${EMAIL_TO:-none}"
+    echo "  Notificar exito / Notify success: $NOTIFY_SUCCESS"
+    echo "  Notificar fallos / Notify failures: $NOTIFY_FAILURE"
+    echo ""
+    print_list_file "Directorios / Directories" "$DIRS_FILE"
+    print_list_file "Exclusiones / Excludes" "$EXCLUDES_FILE"
+    print_list_file "Servicios a detener / Services to stop" "$SERVICES_FILE"
+    print_list_file "Bases PostgreSQL especificas / Specific PostgreSQL DBs" "$DB_NAMES_FILE"
+}
+
+delete_job() {
+    require_root
+    local job_id="${1:-}"
+    load_job "$job_id"
+
+    echo ""
+    show_job_config "$JOB_ID"
+    echo ""
+    warn "Esto eliminara la configuracion y deshabilitara timers del trabajo: $JOB_ID"
+    warn "This will delete configuration and disable timers for job: $JOB_ID"
+    if ! prompt_yes_no "Continuar? / Continue? (s/n, y/n)" "n"; then
+        warn "Cancelado / Cancelled"
+        return 0
+    fi
+
+    remove_timers "$JOB_ID"
+
+    rm -f "$JOB_FILE" "$DIRS_FILE" "$EXCLUDES_FILE" "$SERVICES_FILE" "$DB_NAMES_FILE"
+    rm -f "${STATE_DIR}/${JOB_ID}.snar" "${STATE_DIR}/${JOB_ID}.chain" "${STATE_DIR}/${JOB_ID}.snar.pre-"*
+
+    if prompt_yes_no "Eliminar respaldos locales tambien? / Delete local backups too? (s/n, y/n)" "n"; then
+        if [[ -n "$BACKUP_ROOT" && -d "$BACKUP_ROOT" && "$BACKUP_ROOT" == "$DEFAULT_BACKUP_ROOT"* ]]; then
+            rm -rf "$BACKUP_ROOT"
+            ok "Respaldos locales eliminados / Local backups deleted"
+        else
+            warn "No se elimino BACKUP_ROOT porque esta fuera de ${DEFAULT_BACKUP_ROOT}: $BACKUP_ROOT"
+            warn "Delete it manually if you really want to remove those backups."
+        fi
+    fi
+
+    if prompt_yes_no "Eliminar llave SSH del trabajo? / Delete job SSH key? (s/n, y/n)" "n"; then
+        rm -f "$SSH_KEY" "${SSH_KEY}.pub"
+    fi
+
+    ok "Trabajo eliminado / Job deleted: $JOB_ID"
+}
+
 configure_job() {
     require_root
     ensure_base_dirs
@@ -1046,14 +1153,7 @@ show_status() {
     fi
 
     load_job "$job_id"
-    echo "Job: $JOB_ID"
-    echo "Nombre / Name: $JOB_NAME"
-    echo "Local: $BACKUP_ROOT"
-    echo "DB: $DB_TYPE ($DB_MODE)"
-    echo "Remoto / Remote: $REMOTE_ENABLED ${REMOTE_DEST:-}"
-    echo "Email: ${EMAIL_TO:-no configurado}"
-    echo "Completo / Full: $FULL_CALENDAR"
-    echo "Incremental: $INCREMENTAL_CALENDAR"
+    show_job_config "$JOB_ID"
     echo "Verificacion / Verification: $(verification_summary "$BACKUP_ROOT")"
     echo ""
     systemctl status "${APP_NAME}-${JOB_ID}-full.timer" "${APP_NAME}-${JOB_ID}-incremental.timer" --no-pager 2>/dev/null || true
@@ -1076,7 +1176,8 @@ menu() {
         echo "7) $(t verify)"
         echo "8) $(t restore)"
         echo "9) $(t ssh_key)"
-        echo "10) $(t language)"
+        echo "10) $(t delete_job)"
+        echo "11) $(t language)"
         echo "0) $(t exit)"
         read -r -p "$(t option): " opt
         case "$opt" in
@@ -1089,7 +1190,8 @@ menu() {
             7) verify_backup "$(prompt "$(t job_id)")" "$(prompt "$(t backup_id)")" ;;
             8) restore_backup "$(prompt "$(t job_id)")" "$(prompt "$(t backup_id)")" "$(prompt "$(t restore_path)")" ;;
             9) generate_ssh_key "$(prompt "$(t job_id)")" ;;
-            10) choose_language ;;
+            10) delete_job "$(prompt "$(t job_id)")" ;;
+            11) choose_language ;;
             0) exit 0 ;;
             *) warn "$(t invalid)" ;;
         esac
@@ -1108,6 +1210,7 @@ main() {
         restore) shift; restore_backup "$@" ;;
         timers) shift; install_timers "$@" ;;
         remote-key) shift; generate_ssh_key "$@" ;;
+        delete) shift; delete_job "$@" ;;
         menu|"") menu ;;
         help|-h|--help) usage ;;
         *) usage; exit 1 ;;
