@@ -3,6 +3,8 @@
 # Secure Backup Manager
 # Backups de directorios y bases de datos con systemd timers, SSH keys,
 # hashes SHA256, logs, notificaciones por email y restauracion.
+# Elaborado por: Alex Jesus Cabello Leiva
+# Lider de proyectos de innovacion y consultor en ciberseguridad.
 
 set -Eeuo pipefail
 IFS=$'\n\t'
@@ -13,6 +15,7 @@ CONFIG_DIR="/etc/${APP_NAME}"
 JOBS_DIR="${CONFIG_DIR}/jobs"
 STATE_DIR="${CONFIG_DIR}/state"
 KEY_DIR="${CONFIG_DIR}/ssh"
+SECRETS_DIR="${CONFIG_DIR}/secrets"
 LOG_DIR="/var/log/${APP_NAME}"
 DEFAULT_BACKUP_ROOT="/var/backups/${APP_NAME}"
 RUN_DIR="/run/${APP_NAME}"
@@ -107,8 +110,8 @@ require_root() {
 }
 
 ensure_base_dirs() {
-    mkdir -p "$CONFIG_DIR" "$JOBS_DIR" "$STATE_DIR" "$KEY_DIR" "$LOG_DIR" "$DEFAULT_BACKUP_ROOT" "$RUN_DIR"
-    chmod 700 "$CONFIG_DIR" "$JOBS_DIR" "$STATE_DIR" "$KEY_DIR"
+    mkdir -p "$CONFIG_DIR" "$JOBS_DIR" "$STATE_DIR" "$KEY_DIR" "$SECRETS_DIR" "$LOG_DIR" "$DEFAULT_BACKUP_ROOT" "$RUN_DIR"
+    chmod 700 "$CONFIG_DIR" "$JOBS_DIR" "$STATE_DIR" "$KEY_DIR" "$SECRETS_DIR"
     chmod 750 "$LOG_DIR" "$DEFAULT_BACKUP_ROOT" "$RUN_DIR"
 }
 
@@ -129,7 +132,7 @@ detect_pkg_manager() {
 install_packages() {
     local missing=()
     local cmd
-    for cmd in tar gzip sha256sum rsync ssh systemctl flock find awk sed date; do
+    for cmd in tar gzip sha256sum rsync ssh systemctl flock find awk sed date openssl; do
         need_cmd "$cmd" || missing+=("$cmd")
     done
 
@@ -142,13 +145,13 @@ install_packages() {
     case "$pm" in
         apt)
             apt-get update
-            apt-get install -y tar gzip coreutils rsync openssh-client systemd util-linux findutils gawk sed mailutils
+            apt-get install -y tar gzip coreutils rsync openssh-client openssl systemd util-linux findutils gawk sed mailutils
             ;;
-        dnf) dnf install -y tar gzip coreutils rsync openssh-clients systemd util-linux findutils gawk sed mailx ;;
-        yum) yum install -y tar gzip coreutils rsync openssh-clients systemd util-linux findutils gawk sed mailx ;;
-        zypper) zypper install -y tar gzip coreutils rsync openssh-clients systemd util-linux findutils gawk sed mailx ;;
-        pacman) pacman -Sy --noconfirm tar gzip coreutils rsync openssh systemd util-linux findutils gawk sed ;;
-        *) die "No se detecto gestor de paquetes. Instale manualmente: tar gzip coreutils rsync openssh-client systemd util-linux" ;;
+        dnf) dnf install -y tar gzip coreutils rsync openssh-clients openssl systemd util-linux findutils gawk sed mailx ;;
+        yum) yum install -y tar gzip coreutils rsync openssh-clients openssl systemd util-linux findutils gawk sed mailx ;;
+        zypper) zypper install -y tar gzip coreutils rsync openssh-clients openssl systemd util-linux findutils gawk sed mailx ;;
+        pacman) pacman -Sy --noconfirm tar gzip coreutils rsync openssh openssl systemd util-linux findutils gawk sed ;;
+        *) die "No se detecto gestor de paquetes. Instale manualmente: tar gzip coreutils rsync openssh-client openssl systemd util-linux" ;;
     esac
 }
 
@@ -212,6 +215,9 @@ load_job() {
     EMAIL_TO="${EMAIL_TO:-}"
     NOTIFY_SUCCESS="${NOTIFY_SUCCESS:-true}"
     NOTIFY_FAILURE="${NOTIFY_FAILURE:-true}"
+    ENCRYPTION_ENABLED="${ENCRYPTION_ENABLED:-false}"
+    ENCRYPTION_CIPHER="${ENCRYPTION_CIPHER:-aes-256-cbc}"
+    ENCRYPTION_PASS_FILE="${ENCRYPTION_PASS_FILE:-${SECRETS_DIR}/${JOB_ID}.encpass}"
     FULL_CALENDAR="${FULL_CALENDAR:-Sun *-*-* 02:00:00}"
     INCREMENTAL_CALENDAR="${INCREMENTAL_CALENDAR:-Mon..Sat *-*-* 02:00:00}"
 
@@ -414,6 +420,65 @@ create_backup_archive() {
     return "$tar_status"
 }
 
+prompt_password_twice() {
+    local pass1 pass2
+    while true; do
+        read -r -s -p "Password de cifrado / Encryption password: " pass1
+        echo ""
+        read -r -s -p "Confirmar password / Confirm password: " pass2
+        echo ""
+        if [[ -z "$pass1" ]]; then
+            warn "La contrasena no puede estar vacia / Password cannot be empty"
+        elif [[ "$pass1" != "$pass2" ]]; then
+            warn "Las contrasenas no coinciden / Passwords do not match"
+        else
+            printf '%s' "$pass1"
+            return 0
+        fi
+    done
+}
+
+prompt_password_once() {
+    local pass
+    read -r -s -p "Password de descifrado / Decryption password: " pass
+    echo ""
+    [[ -n "$pass" ]] || die "La contrasena no puede estar vacia / Password cannot be empty"
+    printf '%s' "$pass"
+}
+
+encrypt_archive() {
+    local plain_archive="$1"
+    local encrypted_archive="${plain_archive}.enc"
+    local pass
+
+    [[ "$ENCRYPTION_ENABLED" == "true" ]] || { echo "$plain_archive"; return 0; }
+    need_cmd openssl || die "openssl no esta instalado"
+
+    info "Cifrando respaldo con OpenSSL ${ENCRYPTION_CIPHER}"
+    if [[ -f "$ENCRYPTION_PASS_FILE" ]]; then
+        pass="$(<"$ENCRYPTION_PASS_FILE")"
+    else
+        pass="$(prompt_password_twice)"
+    fi
+    openssl enc "-${ENCRYPTION_CIPHER}" -salt -pbkdf2 -iter 200000 \
+        -in "$plain_archive" -out "$encrypted_archive" -pass "pass:${pass}" >> "$CURRENT_LOG" 2>&1
+    chmod 600 "$encrypted_archive"
+    rm -f "$plain_archive"
+    echo "$encrypted_archive"
+}
+
+decrypt_archive_to_temp() {
+    local encrypted_archive="$1"
+    local temp_archive="$2"
+    local pass
+
+    need_cmd openssl || die "openssl no esta instalado"
+    pass="$(prompt_password_once)"
+    openssl enc "-${ENCRYPTION_CIPHER}" -d -pbkdf2 -iter 200000 \
+        -in "$encrypted_archive" -out "$temp_archive" -pass "pass:${pass}" >> "$CURRENT_LOG" 2>&1
+    chmod 600 "$temp_archive"
+}
+
 make_manifest() {
     local manifest="$1"
     local backup_type="$2"
@@ -435,6 +500,8 @@ make_manifest() {
     write_var "$manifest" SHA256_FILE "$(basename "$archive").sha256"
     write_var "$manifest" DB_TYPE "$DB_TYPE"
     write_var "$manifest" DB_MODE "$DB_MODE"
+    write_var "$manifest" ENCRYPTION_ENABLED "$ENCRYPTION_ENABLED"
+    write_var "$manifest" ENCRYPTION_CIPHER "$ENCRYPTION_CIPHER"
     write_var "$manifest" REMOTE_ENABLED "$REMOTE_ENABLED"
 }
 
@@ -538,7 +605,7 @@ run_backup() {
     local file_list="${work_dir}/files.list"
     local archive="${backup_dir}/${JOB_ID}-${BACKUP_ID}.tar.gz"
     local manifest="${backup_dir}/manifest.conf"
-    local hash_file="${archive}.sha256"
+    local hash_file
 
     mkdir -p "$work_dir"
     chmod 700 "$backup_dir" "$work_dir"
@@ -561,6 +628,9 @@ run_backup() {
 
     info "Creando archivo tar.gz"
     create_backup_archive "$archive" "$snapshot" "$file_list" "$work_dir" "$dump_dir"
+
+    archive="$(encrypt_archive "$archive")"
+    hash_file="${archive}.sha256"
 
     info "Generando hash SHA256"
     (cd "$backup_dir" && sha256sum "$(basename "$archive")" > "$(basename "$hash_file")")
@@ -665,15 +735,25 @@ restore_backup() {
 
     CURRENT_LOG="${LOG_DIR}/${JOB_ID}-restore-$(date +%Y%m%d-%H%M%S).log"
     : > "$CURRENT_LOG"
+    trap '[[ -n "${temp_archive:-}" ]] && rm -f "$temp_archive"' EXIT
 
     info "Restaurando en $restore_to"
-    local item archive
+    local item archive restore_archive temp_archive
     for item in "${restore_list[@]}"; do
         verify_backup "$JOB_ID" "$item" >> "$CURRENT_LOG" 2>&1
-        archive="$(find "${BACKUP_ROOT}/${item}" -maxdepth 1 -name '*.tar.gz' -type f | head -1)"
+        archive="$(find "${BACKUP_ROOT}/${item}" -maxdepth 1 \( -name '*.tar.gz' -o -name '*.tar.gz.enc' \) -type f | head -1)"
         [[ -f "$archive" ]] || die "No existe archive para $item"
+        restore_archive="$archive"
+        temp_archive=""
+        if [[ "$archive" == *.enc ]]; then
+            temp_archive="$(mktemp "/tmp/${APP_NAME}-${JOB_ID}-${item}.XXXXXX.tar.gz")"
+            info "Descifrando respaldo temporalmente: $item"
+            decrypt_archive_to_temp "$archive" "$temp_archive"
+            restore_archive="$temp_archive"
+        fi
         info "Extrayendo $item"
-        tar --extract --gzip --listed-incremental=/dev/null --file="$archive" --directory="$restore_to" >> "$CURRENT_LOG" 2>&1
+        tar --extract --gzip --listed-incremental=/dev/null --file="$restore_archive" --directory="$restore_to" >> "$CURRENT_LOG" 2>&1
+        [[ -n "$temp_archive" ]] && rm -f "$temp_archive"
     done
 
     ok "Restauracion completada en $restore_to"
@@ -977,6 +1057,9 @@ show_job_config() {
     echo "  Email: ${EMAIL_TO:-none}"
     echo "  Notificar exito / Notify success: $NOTIFY_SUCCESS"
     echo "  Notificar fallos / Notify failures: $NOTIFY_FAILURE"
+    echo "  Cifrado / Encryption: $ENCRYPTION_ENABLED"
+    echo "  Cifrado algoritmo / Encryption cipher: $ENCRYPTION_CIPHER"
+    echo "  Archivo password cifrado / Encryption password file: ${ENCRYPTION_PASS_FILE:-none}"
     echo ""
     print_list_file "Directorios / Directories" "$DIRS_FILE"
     print_list_file "Exclusiones / Excludes" "$EXCLUDES_FILE"
@@ -1018,6 +1101,10 @@ delete_job() {
         rm -f "$SSH_KEY" "${SSH_KEY}.pub"
     fi
 
+    if prompt_yes_no "Eliminar password de cifrado guardado? / Delete stored encryption password? (s/n, y/n)" "n"; then
+        rm -f "${ENCRYPTION_PASS_FILE:-}"
+    fi
+
     ok "Trabajo eliminado / Job deleted: $JOB_ID"
 }
 
@@ -1028,7 +1115,7 @@ configure_job() {
 
     echo -e "${C_BOLD}${C_BLUE}$(t title)${C_RESET}"
 
-    local name job_id backup_root retention full_cal inc_cal db_type db_mode remote_enabled remote_dest ssh_port email
+    local name job_id backup_root retention full_cal inc_cal db_type db_mode remote_enabled remote_dest ssh_port email encryption_enabled encryption_pass_file encryption_pass
     name="$(prompt "Nombre del job / Job name" "backup-principal")"
     job_id="$(safe_job_id "$name")"
     backup_root="$(prompt "Ruta local / Local backup path" "${DEFAULT_BACKUP_ROOT}/${job_id}")"
@@ -1105,6 +1192,16 @@ configure_job() {
     fi
 
     email="$(prompt "Email para notificaciones / Notification email (opcional/optional)")"
+    encryption_enabled="false"
+    encryption_pass_file="${SECRETS_DIR}/${job_id}.encpass"
+    if prompt_yes_no "Cifrar respaldos con password? / Encrypt backups with password? (s/n, y/n)" "n"; then
+        encryption_enabled="true"
+        warn "La contrasena se guardara protegida por root para permitir respaldos programados. Debe recordarla para restaurar."
+        warn "The password will be stored root-only so scheduled backups can run. You must remember it to restore."
+        encryption_pass="$(prompt_password_twice)"
+        printf '%s' "$encryption_pass" > "$encryption_pass_file"
+        chmod 600 "$encryption_pass_file"
+    fi
 
     local job_file="${JOBS_DIR}/${job_id}.conf"
     : > "$job_file"
@@ -1125,6 +1222,9 @@ configure_job() {
     write_var "$job_file" EMAIL_TO "$email"
     write_var "$job_file" NOTIFY_SUCCESS "true"
     write_var "$job_file" NOTIFY_FAILURE "true"
+    write_var "$job_file" ENCRYPTION_ENABLED "$encryption_enabled"
+    write_var "$job_file" ENCRYPTION_CIPHER "aes-256-cbc"
+    write_var "$job_file" ENCRYPTION_PASS_FILE "$encryption_pass_file"
     write_var "$job_file" FULL_CALENDAR "$full_cal"
     write_var "$job_file" INCREMENTAL_CALENDAR "$inc_cal"
     chmod 600 "$job_file" "$dirs_file" "$excludes_file" "$services_file" "$dbs_file"
