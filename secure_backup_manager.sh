@@ -91,6 +91,7 @@ t() {
         list) [[ "$APP_LANG" == "en" ]] && echo "List backups" || echo "Listar respaldos" ;;
         verify) [[ "$APP_LANG" == "en" ]] && echo "Verify backup" || echo "Verificar respaldo" ;;
         restore) [[ "$APP_LANG" == "en" ]] && echo "Restore backup" || echo "Restaurar respaldo" ;;
+        decrypt) [[ "$APP_LANG" == "en" ]] && echo "Decrypt encrypted backup" || echo "Desencriptar respaldo cifrado" ;;
         ssh_key) [[ "$APP_LANG" == "en" ]] && echo "Show SSH public key" || echo "Mostrar llave publica SSH" ;;
         delete_job) [[ "$APP_LANG" == "en" ]] && echo "Delete backup job" || echo "Eliminar trabajo de respaldo" ;;
         language) [[ "$APP_LANG" == "en" ]] && echo "Language / Idioma" || echo "Idioma / Language" ;;
@@ -100,6 +101,7 @@ t() {
         job_id) [[ "$APP_LANG" == "en" ]] && echo "JOB_ID" || echo "JOB_ID" ;;
         backup_id) [[ "$APP_LANG" == "en" ]] && echo "BACKUP_ID" || echo "BACKUP_ID" ;;
         restore_path) [[ "$APP_LANG" == "en" ]] && echo "Restore destination path" || echo "Ruta destino de restauracion" ;;
+        decrypt_path) [[ "$APP_LANG" == "en" ]] && echo "Decrypted tar.gz output path" || echo "Ruta de salida tar.gz descifrada" ;;
         invalid) [[ "$APP_LANG" == "en" ]] && echo "Invalid option" || echo "Opcion invalida" ;;
         verified) [[ "$APP_LANG" == "en" ]] && echo "VERIFIED" || echo "VERIFICADO" ;;
         not_verified) [[ "$APP_LANG" == "en" ]] && echo "NOT VERIFIED" || echo "NO VERIFICADO" ;;
@@ -127,6 +129,7 @@ Uso:
   sudo ./${APP_NAME}.sh list [JOB_ID]
   sudo ./${APP_NAME}.sh verify JOB_ID BACKUP_ID
   sudo ./${APP_NAME}.sh restore JOB_ID BACKUP_ID /ruta/destino
+  sudo ./${APP_NAME}.sh decrypt JOB_ID BACKUP_ID /ruta/salida.tar.gz
   sudo ./${APP_NAME}.sh remote-key JOB_ID
   sudo ./${APP_NAME}.sh delete JOB_ID
   sudo ./${APP_NAME}.sh menu
@@ -802,10 +805,11 @@ list_backup_details_for_job() {
 
 select_existing_backup() {
     local action="${1:-seleccionar}"
+    local encrypted_only="${2:-false}"
     ensure_base_dirs
 
     local choices=()
-    local job backup_dir backup_id manifest created_at backup_type status dirs index=1
+    local job backup_dir backup_id manifest created_at backup_type status dirs archive index=1
 
     echo "" >&2
     echo "Respaldos disponibles para ${action} / Available backups:" >&2
@@ -815,6 +819,11 @@ select_existing_backup() {
         load_job "$job"
         dirs="$(dirs_summary "$DIRS_FILE")"
         while IFS= read -r backup_dir; do
+            archive="$(find "$backup_dir" -maxdepth 1 \( -name '*.tar.gz' -o -name '*.tar.gz.enc' \) -type f | head -1)"
+            [[ -f "$archive" ]] || continue
+            if [[ "$encrypted_only" == "true" && "$archive" != *.enc ]]; then
+                continue
+            fi
             backup_id="$(basename "$backup_dir")"
             manifest="${backup_dir}/manifest.conf"
             created_at="$(manifest_value "$manifest" CREATED_AT)"
@@ -850,6 +859,45 @@ restore_backup_interactive() {
     backup_id="${selected#*|}"
     restore_to="$(prompt "$(t restore_path)")"
     restore_backup "$job_id" "$backup_id" "$restore_to"
+}
+
+decrypt_backup() {
+    require_root
+    ensure_base_dirs
+    local job_id="${1:-}"
+    local backup_id="${2:-}"
+    local output_path="${3:-}"
+    load_job "$job_id"
+
+    [[ -n "$backup_id" ]] || die "Falta BACKUP_ID"
+    [[ -n "$output_path" ]] || die "Falta ruta de salida descifrada"
+
+    local backup_dir="${BACKUP_ROOT}/${backup_id}"
+    local archive output_dir
+    archive="$(find "$backup_dir" -maxdepth 1 -name '*.tar.gz.enc' -type f | head -1)"
+    [[ -f "$archive" ]] || die "No existe archivo cifrado .tar.gz.enc para $backup_id"
+
+    output_dir="$(dirname "$output_path")"
+    mkdir -p "$output_dir"
+
+    CURRENT_LOG="${LOG_DIR}/${JOB_ID}-decrypt-$(date +%Y%m%d-%H%M%S).log"
+    : > "$CURRENT_LOG"
+
+    verify_backup "$JOB_ID" "$backup_id"
+    info "Descifrando $archive"
+    decrypt_archive_to_temp "$archive" "$output_path"
+    ok "Archivo descifrado creado: $output_path"
+    warn "El archivo descifrado contiene datos sensibles. Protejalo, muevalo a un lugar seguro o eliminelo cuando termine."
+}
+
+decrypt_backup_interactive() {
+    local selected job_id backup_id default_output output_path
+    selected="$(select_existing_backup "desencriptar" "true")"
+    job_id="${selected%%|*}"
+    backup_id="${selected#*|}"
+    default_output="/root/${job_id}-${backup_id}.tar.gz"
+    output_path="$(prompt "$(t decrypt_path)" "$default_output")"
+    decrypt_backup "$job_id" "$backup_id" "$output_path"
 }
 
 verify_backup() {
@@ -1079,6 +1127,12 @@ prompt_yes_no() {
     value="$(read_input "$text: " "$default")"
     value="${value:-$default}"
     [[ "$value" =~ ^[sSyY] ]]
+}
+
+pause_for_enter() {
+    [[ -t 0 ]] || return 0
+    echo ""
+    read_input "Presione Enter para volver al menu / Press Enter to return to menu..." >/dev/null
 }
 
 choose_language() {
@@ -1449,9 +1503,10 @@ menu() {
         echo "6) $(t list)"
         echo "7) $(t verify)"
         echo "8) $(t restore)"
-        echo "9) $(t ssh_key)"
-        echo "10) $(t delete_job)"
-        echo "11) $(t language)"
+        echo "9) $(t decrypt)"
+        echo "10) $(t ssh_key)"
+        echo "11) $(t delete_job)"
+        echo "12) $(t language)"
         echo "0) $(t exit)"
         opt="$(read_input "$(t option): ")"
         case "$opt" in
@@ -1463,12 +1518,14 @@ menu() {
             6) list_configured_backups ;;
             7) verify_backup_interactive ;;
             8) restore_backup_interactive ;;
-            9) generate_ssh_key "$(prompt "$(t job_id)")" ;;
-            10) delete_job "$(prompt "$(t job_id)")" ;;
-            11) choose_language ;;
+            9) decrypt_backup_interactive ;;
+            10) generate_ssh_key "$(prompt "$(t job_id)")" ;;
+            11) delete_job "$(prompt "$(t job_id)")" ;;
+            12) choose_language ;;
             0) exit 0 ;;
             *) warn "$(t invalid)" ;;
         esac
+        pause_for_enter
     done
 }
 
@@ -1482,6 +1539,7 @@ main() {
         list) shift; [[ $# -gt 0 ]] && list_backups "${1:-}" || list_configured_backups ;;
         verify) shift; [[ $# -gt 0 ]] && verify_backup "$@" || verify_backup_interactive ;;
         restore) shift; [[ $# -gt 0 ]] && restore_backup "$@" || restore_backup_interactive ;;
+        decrypt) shift; [[ $# -gt 0 ]] && decrypt_backup "$@" || decrypt_backup_interactive ;;
         timers) shift; install_timers "$@" ;;
         remote-key) shift; generate_ssh_key "$@" ;;
         delete) shift; delete_job "$@" ;;
