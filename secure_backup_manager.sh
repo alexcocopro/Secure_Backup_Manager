@@ -732,6 +732,126 @@ list_backups() {
     fi
 }
 
+list_configured_backups() {
+    ensure_base_dirs
+
+    local job found=0
+    while IFS= read -r job; do
+        found=1
+        show_job_config "$job"
+        echo "Verificacion / Verification: $(verification_summary "$BACKUP_ROOT")"
+        echo ""
+        echo "Respaldos realizados / Completed backups:"
+        if ! list_backup_details_for_job "$JOB_ID"; then
+            echo "  - none / ninguno"
+        fi
+        echo ""
+    done < <(list_jobs)
+
+    [[ "$found" -eq 1 ]] || warn "No hay respaldos configurados / No configured backup jobs"
+}
+
+manifest_value() {
+    local manifest="$1"
+    local key="$2"
+    [[ -f "$manifest" ]] || return 0
+    awk -F= -v key="$key" '$1 == key { sub(/^[^=]*=/, ""); print; exit }' "$manifest" | sed "s/^'//; s/'$//"
+}
+
+dirs_summary() {
+    local file="$1"
+    if [[ -f "$file" ]] && grep -Ev '^[[:space:]]*($|#)' "$file" >/dev/null 2>&1; then
+        read_list "$file" | awk 'NR == 1 { printf "%s", $0; next } { printf ", %s", $0 } END { print "" }'
+    else
+        echo "none / ninguno"
+    fi
+}
+
+backup_date_from_id() {
+    local backup_id="$1"
+    if [[ "$backup_id" =~ ^([0-9]{8})-([0-9]{6}) ]]; then
+        printf '%s-%s-%s %s:%s:%s\n' \
+            "${BASH_REMATCH[1]:0:4}" "${BASH_REMATCH[1]:4:2}" "${BASH_REMATCH[1]:6:2}" \
+            "${BASH_REMATCH[2]:0:2}" "${BASH_REMATCH[2]:2:2}" "${BASH_REMATCH[2]:4:2}"
+    else
+        echo "$backup_id"
+    fi
+}
+
+list_backup_details_for_job() {
+    local job_id="${1:-}"
+    load_job "$job_id"
+
+    local backup_dir backup_id manifest created_at backup_type status dirs found=0
+    dirs="$(dirs_summary "$DIRS_FILE")"
+
+    while IFS= read -r backup_dir; do
+        found=1
+        backup_id="$(basename "$backup_dir")"
+        manifest="${backup_dir}/manifest.conf"
+        created_at="$(manifest_value "$manifest" CREATED_AT)"
+        backup_type="$(manifest_value "$manifest" BACKUP_TYPE)"
+        created_at="${created_at:-$(backup_date_from_id "$backup_id")}"
+        backup_type="${backup_type:-unknown}"
+        status="$(backup_verification_status "$backup_dir")"
+        printf '  %-28s %-12s %-25s %-16s %s\n' "$backup_id" "$backup_type" "$created_at" "$status" "$dirs"
+    done < <(find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d -name '20*' 2>/dev/null | sort)
+
+    [[ "$found" -eq 1 ]]
+}
+
+select_existing_backup() {
+    local action="${1:-seleccionar}"
+    ensure_base_dirs
+
+    local choices=()
+    local job backup_dir backup_id manifest created_at backup_type status dirs index=1
+
+    echo "" >&2
+    echo "Respaldos disponibles para ${action} / Available backups:" >&2
+    printf '%-4s %-22s %-28s %-12s %-25s %-16s %s\n' "#" "JOB_ID" "BACKUP_ID" "Tipo" "Fecha" "Estado" "Directorios" >&2
+
+    while IFS= read -r job; do
+        load_job "$job"
+        dirs="$(dirs_summary "$DIRS_FILE")"
+        while IFS= read -r backup_dir; do
+            backup_id="$(basename "$backup_dir")"
+            manifest="${backup_dir}/manifest.conf"
+            created_at="$(manifest_value "$manifest" CREATED_AT)"
+            backup_type="$(manifest_value "$manifest" BACKUP_TYPE)"
+            created_at="${created_at:-$(backup_date_from_id "$backup_id")}"
+            backup_type="${backup_type:-unknown}"
+            status="$(backup_verification_status "$backup_dir")"
+            printf '%-4s %-22s %-28s %-12s %-25s %-16s %s\n' "$index" "$JOB_ID" "$backup_id" "$backup_type" "$created_at" "$status" "$dirs" >&2
+            choices+=("${JOB_ID}|${backup_id}")
+            ((++index))
+        done < <(find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d -name '20*' 2>/dev/null | sort)
+    done < <(list_jobs)
+
+    [[ ${#choices[@]} -gt 0 ]] || die "No hay respaldos realizados para seleccionar"
+
+    local selected
+    selected="$(prompt_choice "Seleccione respaldo / Select backup" 1 "${#choices[@]}" 1)"
+    echo "${choices[$((selected - 1))]}"
+}
+
+verify_backup_interactive() {
+    local selected job_id backup_id
+    selected="$(select_existing_backup "verificar")"
+    job_id="${selected%%|*}"
+    backup_id="${selected#*|}"
+    verify_backup "$job_id" "$backup_id"
+}
+
+restore_backup_interactive() {
+    local selected job_id backup_id restore_to
+    selected="$(select_existing_backup "restaurar")"
+    job_id="${selected%%|*}"
+    backup_id="${selected#*|}"
+    restore_to="$(prompt "$(t restore_path)")"
+    restore_backup "$job_id" "$backup_id" "$restore_to"
+}
+
 verify_backup() {
     require_root
     local job_id="${1:-}"
@@ -1340,9 +1460,9 @@ menu() {
             3) show_status "$(prompt "$(t optional_job)")" ;;
             4) run_backup "$(prompt "$(t job_id)")" full ;;
             5) run_backup "$(prompt "$(t job_id)")" incremental ;;
-            6) list_backups "$(prompt "$(t optional_job)")" ;;
-            7) verify_backup "$(prompt "$(t job_id)")" "$(prompt "$(t backup_id)")" ;;
-            8) restore_backup "$(prompt "$(t job_id)")" "$(prompt "$(t backup_id)")" "$(prompt "$(t restore_path)")" ;;
+            6) list_configured_backups ;;
+            7) verify_backup_interactive ;;
+            8) restore_backup_interactive ;;
             9) generate_ssh_key "$(prompt "$(t job_id)")" ;;
             10) delete_job "$(prompt "$(t job_id)")" ;;
             11) choose_language ;;
@@ -1359,9 +1479,9 @@ main() {
         configure) configure_job ;;
         run) shift; run_backup "$@" ;;
         status) shift; show_status "${1:-}" ;;
-        list) shift; list_backups "${1:-}" ;;
-        verify) shift; verify_backup "$@" ;;
-        restore) shift; restore_backup "$@" ;;
+        list) shift; [[ $# -gt 0 ]] && list_backups "${1:-}" || list_configured_backups ;;
+        verify) shift; [[ $# -gt 0 ]] && verify_backup "$@" || verify_backup_interactive ;;
+        restore) shift; [[ $# -gt 0 ]] && restore_backup "$@" || restore_backup_interactive ;;
         timers) shift; install_timers "$@" ;;
         remote-key) shift; generate_ssh_key "$@" ;;
         delete) shift; delete_job "$@" ;;
