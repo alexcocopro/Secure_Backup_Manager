@@ -8,6 +8,7 @@
 
 set -Eeuo pipefail
 IFS=$'\n\t'
+umask 077
 
 VERSION="1.0.0"
 APP_NAME="secure-backup-manager"
@@ -15,7 +16,7 @@ CONFIG_DIR="/etc/${APP_NAME}"
 JOBS_DIR="${CONFIG_DIR}/jobs"
 STATE_DIR="${CONFIG_DIR}/state"
 KEY_DIR="${CONFIG_DIR}/ssh"
-SECRETS_DIR="${CONFIG_DIR}/secrets"
+SECRETS_DIR="${CONFIG_DIR}/.secrets"
 LOG_DIR="/var/log/${APP_NAME}"
 DEFAULT_BACKUP_ROOT="/var/backups/${APP_NAME}"
 RUN_DIR="/run/${APP_NAME}"
@@ -478,22 +479,37 @@ prompt_password_once() {
     printf '%s' "$pass"
 }
 
+write_temp_secret_file() {
+    local secret="$1"
+    local tmp_file
+    tmp_file="$(mktemp "${RUN_DIR}/secret.XXXXXX")"
+    chmod 600 "$tmp_file"
+    printf '%s' "$secret" > "$tmp_file"
+    echo "$tmp_file"
+}
+
 encrypt_archive() {
     local plain_archive="$1"
     local encrypted_archive="${plain_archive}.enc"
-    local pass
+    local pass pass_file temp_pass_file=""
 
     [[ "$ENCRYPTION_ENABLED" == "true" ]] || { echo "$plain_archive"; return 0; }
     need_cmd openssl || die "openssl no esta instalado"
 
     info "Cifrando respaldo con OpenSSL ${ENCRYPTION_CIPHER}"
     if [[ -f "$ENCRYPTION_PASS_FILE" ]]; then
-        pass="$(<"$ENCRYPTION_PASS_FILE")"
+        pass_file="$ENCRYPTION_PASS_FILE"
     else
         pass="$(prompt_password_twice)"
+        temp_pass_file="$(write_temp_secret_file "$pass")"
+        pass_file="$temp_pass_file"
     fi
-    openssl enc "-${ENCRYPTION_CIPHER}" -salt -pbkdf2 -iter 200000 \
-        -in "$plain_archive" -out "$encrypted_archive" -pass "pass:${pass}" >> "$CURRENT_LOG" 2>&1
+    if ! openssl enc "-${ENCRYPTION_CIPHER}" -salt -pbkdf2 -iter 200000 \
+        -in "$plain_archive" -out "$encrypted_archive" -pass "file:${pass_file}" >> "$CURRENT_LOG" 2>&1; then
+        [[ -n "$temp_pass_file" ]] && rm -f "$temp_pass_file"
+        return 1
+    fi
+    [[ -n "$temp_pass_file" ]] && rm -f "$temp_pass_file"
     chmod 600 "$encrypted_archive"
     rm -f "$plain_archive"
     echo "$encrypted_archive"
@@ -502,12 +518,17 @@ encrypt_archive() {
 decrypt_archive_to_temp() {
     local encrypted_archive="$1"
     local temp_archive="$2"
-    local pass
+    local pass temp_pass_file
 
     need_cmd openssl || die "openssl no esta instalado"
     pass="$(prompt_password_once)"
-    openssl enc "-${ENCRYPTION_CIPHER}" -d -pbkdf2 -iter 200000 \
-        -in "$encrypted_archive" -out "$temp_archive" -pass "pass:${pass}" >> "$CURRENT_LOG" 2>&1
+    temp_pass_file="$(write_temp_secret_file "$pass")"
+    if ! openssl enc "-${ENCRYPTION_CIPHER}" -d -pbkdf2 -iter 200000 \
+        -in "$encrypted_archive" -out "$temp_archive" -pass "file:${temp_pass_file}" >> "$CURRENT_LOG" 2>&1; then
+        rm -f "$temp_pass_file"
+        return 1
+    fi
+    rm -f "$temp_pass_file"
     chmod 600 "$temp_archive"
 }
 
