@@ -716,6 +716,14 @@ list_jobs() {
     done
 }
 
+job_count() {
+    local count=0 job
+    while IFS= read -r job; do
+        ((++count))
+    done < <(list_jobs)
+    echo "$count"
+}
+
 list_backups() {
     local job_id="${1:-}"
     if [[ -n "$job_id" ]]; then
@@ -898,6 +906,42 @@ decrypt_backup_interactive() {
     default_output="/root/${job_id}-${backup_id}.tar.gz"
     output_path="$(prompt "$(t decrypt_path)" "$default_output")"
     decrypt_backup "$job_id" "$backup_id" "$output_path"
+}
+
+run_backup_interactive() {
+    local backup_type="${1:-incremental}"
+    local existing_count choice job_id
+
+    existing_count="$(job_count)"
+
+    echo ""
+    echo "Ejecutar respaldo ${backup_type} ahora / Run ${backup_type} backup now"
+    if [[ "$existing_count" -gt 0 ]]; then
+        echo "1) Seleccionar trabajo existente / Select existing job"
+        echo "2) Crear/configurar nuevo trabajo y ejecutarlo / Create/configure new job and run it"
+        echo "0) Volver / Back"
+        choice="$(prompt_choice "Opcion / Option" 0 2 1)"
+    else
+        warn "No hay trabajos configurados / No configured jobs"
+        echo "1) Crear/configurar nuevo trabajo y ejecutarlo / Create/configure new job and run it"
+        echo "0) Volver / Back"
+        choice="$(prompt_choice "Opcion / Option" 0 1 1)"
+        [[ "$choice" == "1" ]] && choice="2"
+    fi
+
+    case "$choice" in
+        1)
+            job_id="$(select_existing_job)"
+            run_backup "$job_id" "$backup_type"
+            ;;
+        2)
+            configure_job
+            run_backup "$JOB_ID" "$backup_type"
+            ;;
+        0)
+            return 0
+            ;;
+    esac
 }
 
 verify_backup() {
@@ -1708,8 +1752,8 @@ menu() {
             1) install_self ;;
             2) configure_job ;;
             3) show_status "$(prompt "$(t optional_job)")" ;;
-            4) run_backup "$(prompt "$(t job_id)")" full ;;
-            5) run_backup "$(prompt "$(t job_id)")" incremental ;;
+            4) run_backup_interactive full ;;
+            5) run_backup_interactive incremental ;;
             6) list_configured_backups ;;
             7) verify_backup_interactive ;;
             8) restore_backup_interactive ;;

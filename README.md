@@ -211,10 +211,12 @@ Confirmar password / Confirm password
 La contrasena se guarda en:
 
 ```bash
-/etc/secure-backup-manager/secrets/JOB_ID.encpass
+/etc/secure-backup-manager/.secrets/JOB_ID.encpass
 ```
 
-con permisos `600` y acceso root. Esto permite que los timers de `systemd` cifren respaldos programados sin pedir entrada interactiva.
+con permisos `600` y acceso root. El directorio `.secrets` tiene permisos `700`.
+
+El programa no coloca la contrasena en variables de entorno ni en argumentos visibles de proceso. Para OpenSSL usa `-pass file:...`, evitando exponer el secreto en `ps`, `top` o logs.
 
 ## EN - Backup encryption
 
@@ -242,14 +244,23 @@ Confirmar password / Confirm password
 The password is stored in:
 
 ```bash
-/etc/secure-backup-manager/secrets/JOB_ID.encpass
+/etc/secure-backup-manager/.secrets/JOB_ID.encpass
 ```
 
-with `600` permissions and root access. This allows `systemd` timers to encrypt scheduled backups without interactive input.
+with `600` permissions and root access. The `.secrets` directory has `700` permissions.
+
+The program does not put the password in environment variables or process-visible arguments. It uses OpenSSL `-pass file:...`, avoiding secret exposure in `ps`, `top`, or logs.
 
 ---
 
 ## ES - Ejecutar respaldos manuales
+
+Desde el menu interactivo, las opciones de respaldo completo e incremental permiten:
+
+- Seleccionar un trabajo existente desde una lista.
+- Crear/configurar un trabajo nuevo y ejecutarlo inmediatamente.
+
+Por consola tambien puede ejecutarse indicando el `JOB_ID`.
 
 Completo:
 
@@ -271,6 +282,13 @@ sudo secure-backup-manager run etc incremental
 ```
 
 ## EN - Run manual backups
+
+From the interactive menu, the full and incremental backup options let you:
+
+- Select an existing job from a list.
+- Create/configure a new job and run it immediately.
+
+From the command line, you can still run a backup by passing the `JOB_ID`.
 
 Full:
 
@@ -330,9 +348,12 @@ The output includes paths, retention, database, mode, schedules, remote setup, S
 ## ES - Listar y verificar respaldos
 
 ```bash
+sudo secure-backup-manager list
 sudo secure-backup-manager list JOB_ID
 sudo secure-backup-manager verify JOB_ID BACKUP_ID
 ```
+
+`list` sin `JOB_ID` muestra todos los respaldos configurados con sus calendarios, directorios, email, cifrado, remoto, retencion y respaldos realizados. En el menu interactivo, el programa pausa despues de mostrar el listado para que pueda revisarse antes de volver al menu.
 
 Ejemplo:
 
@@ -346,9 +367,12 @@ Ejemplo:
 ## EN - List and verify backups
 
 ```bash
+sudo secure-backup-manager list
 sudo secure-backup-manager list JOB_ID
 sudo secure-backup-manager verify JOB_ID BACKUP_ID
 ```
+
+`list` without `JOB_ID` shows all configured backup jobs with schedules, directories, email, encryption, remote settings, retention, and completed backups. In the interactive menu, the program pauses after showing the list so it can be reviewed before returning to the menu.
 
 Example:
 
@@ -404,6 +428,32 @@ Password de descifrado / Decryption password
 Then it decrypts to a temporary file, extracts the content, and removes the temporary file.
 
 If the selected backup is incremental, it restores the required chain: base full plus needed incrementals.
+
+---
+
+## ES - Desencriptar un respaldo cifrado
+
+Para descifrar un `.tar.gz.enc` sin restaurarlo:
+
+```bash
+sudo secure-backup-manager decrypt JOB_ID BACKUP_ID /ruta/salida.tar.gz
+```
+
+Tambien puede usar la opcion del menu `Desencriptar respaldo cifrado`. El programa muestra solo respaldos cifrados, verifica el SHA256 del `.enc`, pide la contrasena y genera un `.tar.gz` descifrado en la ruta indicada.
+
+Advertencia: el `.tar.gz` descifrado contiene los datos originales sin cifrar. Protejalo con permisos adecuados y eliminelo cuando ya no sea necesario.
+
+## EN - Decrypt an encrypted backup
+
+To decrypt a `.tar.gz.enc` without restoring it:
+
+```bash
+sudo secure-backup-manager decrypt JOB_ID BACKUP_ID /path/output.tar.gz
+```
+
+You can also use the `Decrypt encrypted backup` menu option. The program shows only encrypted backups, verifies the `.enc` SHA256, asks for the password, and creates a decrypted `.tar.gz` at the selected path.
+
+Warning: the decrypted `.tar.gz` contains the original data without encryption. Protect it with appropriate permissions and remove it when it is no longer needed.
 
 ---
 
@@ -623,21 +673,41 @@ sudo tail -100 /var/log/secure-backup-manager/JOB_ID-*.log
 
 ---
 
-## ES - Eliminar trabajos
+## ES - Eliminar trabajos y respaldos
 
 ```bash
+sudo secure-backup-manager delete
 sudo secure-backup-manager delete JOB_ID
 ```
 
-Esto muestra la configuracion, deshabilita timers, elimina archivos de systemd y pregunta si desea eliminar respaldos locales y llave SSH.
+`delete` sin argumentos abre un menu con estas opciones:
 
-## EN - Delete jobs
+- Eliminar todos los trabajos sin eliminar respaldos.
+- Eliminar todos los respaldos sin eliminar trabajos.
+- Seleccionar un trabajo para eliminarlo sin eliminar sus respaldos.
+- Seleccionar un respaldo realizado para eliminarlo individualmente.
+
+`delete JOB_ID` mantiene el flujo clasico: muestra la configuracion, deshabilita timers, elimina archivos de systemd y pregunta si desea eliminar respaldos locales, llave SSH y password de cifrado guardado.
+
+Cuando se eliminan respaldos pero se conservan trabajos, el programa reinicia el estado incremental para que el proximo incremental cree un nuevo full si hace falta.
+
+## EN - Delete jobs and backups
 
 ```bash
+sudo secure-backup-manager delete
 sudo secure-backup-manager delete JOB_ID
 ```
 
-This shows the configuration, disables timers, removes systemd files, and asks whether local backups and the SSH key should be deleted.
+`delete` without arguments opens a menu with these options:
+
+- Delete all jobs without deleting backups.
+- Delete all backups without deleting jobs.
+- Select one job and delete it without deleting its backups.
+- Select one completed backup and delete it individually.
+
+`delete JOB_ID` keeps the classic flow: it shows the configuration, disables timers, removes systemd files, and asks whether local backups, the SSH key, and the stored encryption password should be deleted.
+
+When backups are deleted but jobs are kept, the program resets incremental state so the next incremental can create a new full if needed.
 
 ---
 
@@ -648,7 +718,7 @@ This shows the configuration, disables timers, removes systemd files, and asks w
 /etc/secure-backup-manager/jobs     # trabajos
 /etc/secure-backup-manager/state    # estado incremental
 /etc/secure-backup-manager/ssh      # llaves SSH
-/etc/secure-backup-manager/secrets  # contrasenas de cifrado protegidas por root
+/etc/secure-backup-manager/.secrets # contrasenas de cifrado protegidas por root
 /var/backups/secure-backup-manager  # respaldos locales
 /var/log/secure-backup-manager      # logs
 ```
@@ -660,7 +730,7 @@ This shows the configuration, disables timers, removes systemd files, and asks w
 /etc/secure-backup-manager/jobs     # jobs
 /etc/secure-backup-manager/state    # incremental state
 /etc/secure-backup-manager/ssh      # SSH keys
-/etc/secure-backup-manager/secrets  # root-protected encryption passwords
+/etc/secure-backup-manager/.secrets # root-protected encryption passwords
 /var/backups/secure-backup-manager  # local backups
 /var/log/secure-backup-manager      # logs
 ```
@@ -672,24 +742,52 @@ This shows the configuration, disables timers, removes systemd files, and asks w
 - Use un usuario remoto dedicado, por ejemplo `backup`.
 - No use contrasenas SSH para automatizacion; use llaves.
 - Proteja `/etc/secure-backup-manager/ssh`.
+- Instale la llave publica en el remoto con privilegios minimos: usuario dedicado, ruta limitada y sin acceso administrativo.
 - Si usa cifrado, guarde una copia de la contrasena en un gestor seguro.
-- Proteja `/etc/secure-backup-manager/secrets`.
+- Proteja `/etc/secure-backup-manager/.secrets`.
+- No copie los archivos de secretos a destinos remotos ni repositorios.
+- No ejecute el programa con `set -x` porque podria imprimir rutas y flujo sensible.
 - Sin la contrasena no se podra restaurar un respaldo cifrado.
 - Verifique periodicamente con `verify`.
 - Pruebe restauraciones en una ruta temporal.
 - Evite respaldar `/proc`, `/sys`, `/dev` y `/run`.
+
+Modelo de secretos:
+
+- Los secretos se guardan bajo `/etc/secure-backup-manager/.secrets`.
+- El directorio usa permisos `700`.
+- Los archivos de contrasena usan permisos `600`.
+- El script fija `umask 077`.
+- Las contrasenas no se pasan a OpenSSL como argumentos visibles.
+- OpenSSL recibe la contrasena con `-pass file:...`.
+- No se usan variables de entorno para contrasenas.
+- Si un atacante obtiene root, puede leer secretos y usar llaves SSH privadas; use cifrado de disco, hardening del servidor y restricciones en `authorized_keys` como `from=`, `command=`, `no-agent-forwarding`, `no-X11-forwarding` y `no-pty` para reducir riesgo de movimiento lateral.
 
 ## EN - Security
 
 - Use a dedicated remote user, for example `backup`.
 - Do not use SSH passwords for automation; use keys.
 - Protect `/etc/secure-backup-manager/ssh`.
+- Install the public key on the remote host with minimum privileges: dedicated user, limited path, and no administrative access.
 - If encryption is enabled, store a copy of the password in a secure password manager.
-- Protect `/etc/secure-backup-manager/secrets`.
+- Protect `/etc/secure-backup-manager/.secrets`.
+- Do not copy secret files to remote destinations or repositories.
+- Do not run the program with `set -x` because it may print sensitive execution flow and paths.
 - Without the password, encrypted backups cannot be restored.
 - Verify periodically with `verify`.
 - Test restores in a temporary path.
 - Avoid backing up `/proc`, `/sys`, `/dev`, and `/run`.
+
+Secrets model:
+
+- Secrets are stored under `/etc/secure-backup-manager/.secrets`.
+- The directory uses `700` permissions.
+- Password files use `600` permissions.
+- The script sets `umask 077`.
+- Passwords are not passed to OpenSSL as process-visible arguments.
+- OpenSSL receives passwords with `-pass file:...`.
+- Password environment variables are not used.
+- If an attacker gets root, secrets can be read and private SSH keys can be used; use disk encryption, host hardening, and `authorized_keys` restrictions such as `from=`, `command=`, `no-agent-forwarding`, `no-X11-forwarding`, and `no-pty` to reduce lateral movement risk.
 
 ---
 
@@ -705,7 +803,9 @@ sudo secure-backup-manager run JOB_ID incremental
 sudo secure-backup-manager list JOB_ID
 sudo secure-backup-manager verify JOB_ID BACKUP_ID
 sudo secure-backup-manager restore JOB_ID BACKUP_ID /ruta/destino
+sudo secure-backup-manager decrypt JOB_ID BACKUP_ID /ruta/salida.tar.gz
 sudo secure-backup-manager remote-key JOB_ID
+sudo secure-backup-manager delete
 sudo secure-backup-manager delete JOB_ID
 ```
 
@@ -721,6 +821,8 @@ sudo secure-backup-manager run JOB_ID incremental
 sudo secure-backup-manager list JOB_ID
 sudo secure-backup-manager verify JOB_ID BACKUP_ID
 sudo secure-backup-manager restore JOB_ID BACKUP_ID /restore/path
+sudo secure-backup-manager decrypt JOB_ID BACKUP_ID /path/output.tar.gz
 sudo secure-backup-manager remote-key JOB_ID
+sudo secure-backup-manager delete
 sudo secure-backup-manager delete JOB_ID
 ```
