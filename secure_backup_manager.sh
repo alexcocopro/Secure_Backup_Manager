@@ -93,6 +93,7 @@ t() {
         restore) [[ "$APP_LANG" == "en" ]] && echo "Restore backup" || echo "Restaurar respaldo" ;;
         decrypt) [[ "$APP_LANG" == "en" ]] && echo "Decrypt encrypted backup" || echo "Desencriptar respaldo cifrado" ;;
         ssh_key) [[ "$APP_LANG" == "en" ]] && echo "Show SSH public key" || echo "Mostrar llave publica SSH" ;;
+        ssh_install) [[ "$APP_LANG" == "en" ]] && echo "Install SSH key on remote host" || echo "Instalar llave SSH en remoto" ;;
         delete_job) [[ "$APP_LANG" == "en" ]] && echo "Delete jobs/backups" || echo "Eliminar trabajos/respaldos" ;;
         language) [[ "$APP_LANG" == "en" ]] && echo "Language / Idioma" || echo "Idioma / Language" ;;
         exit) [[ "$APP_LANG" == "en" ]] && echo "Exit" || echo "Salir" ;;
@@ -131,6 +132,9 @@ Uso:
   sudo ./${APP_NAME}.sh restore JOB_ID BACKUP_ID /ruta/destino
   sudo ./${APP_NAME}.sh decrypt JOB_ID BACKUP_ID /ruta/salida.tar.gz
   sudo ./${APP_NAME}.sh remote-key JOB_ID
+  sudo ./${APP_NAME}.sh remote-install-key JOB_ID
+  sudo ./${APP_NAME}.sh remote-test JOB_ID
+  sudo ./${APP_NAME}.sh test-email JOB_ID
   sudo ./${APP_NAME}.sh delete JOB_ID
   sudo ./${APP_NAME}.sh menu
 
@@ -171,6 +175,9 @@ install_packages() {
     for cmd in tar gzip sha256sum rsync ssh systemctl flock find awk sed date openssl; do
         need_cmd "$cmd" || missing+=("$cmd")
     done
+    if ! need_cmd mail && ! need_cmd mailx && ! need_cmd sendmail; then
+        missing+=("mailutils/mailx/sendmail")
+    fi
 
     [[ ${#missing[@]} -eq 0 ]] && return 0
 
@@ -273,17 +280,24 @@ send_email() {
     [[ -n "${EMAIL_TO:-}" ]] || return 0
 
     if need_cmd mail; then
-        mail -s "$subject" "$EMAIL_TO" < "$body_file" || warn "No se pudo enviar email con mail"
+        mail -s "$subject" "$EMAIL_TO" < "$body_file" && return 0
+        warn "No se pudo enviar email con mail"
+        return 1
     elif need_cmd mailx; then
-        mailx -s "$subject" "$EMAIL_TO" < "$body_file" || warn "No se pudo enviar email con mailx"
+        mailx -s "$subject" "$EMAIL_TO" < "$body_file" && return 0
+        warn "No se pudo enviar email con mailx"
+        return 1
     elif need_cmd sendmail; then
         {
             printf 'To: %s\n' "$EMAIL_TO"
             printf 'Subject: %s\n\n' "$subject"
             cat "$body_file"
-        } | sendmail -t || warn "No se pudo enviar email con sendmail"
+        } | sendmail -t && return 0
+        warn "No se pudo enviar email con sendmail"
+        return 1
     else
         warn "No hay mail/mailx/sendmail instalado; se omite notificacion"
+        return 1
     fi
 }
 
@@ -314,7 +328,7 @@ notify_result() {
         *) [[ "$NOTIFY_FAILURE" == "true" ]] || return 0 ;;
     esac
 
-    send_email "$subject" "$CURRENT_LOG"
+    send_email "$subject" "$CURRENT_LOG" || true
 }
 
 cleanup_services() {
@@ -573,6 +587,142 @@ remote_parts() {
         warn "REMOTE_DEST invalido"
         return 1
     fi
+    if [[ "$REMOTE_HOST" != *@* ]]; then
+        warn "REMOTE_DEST debe incluir usuario explicito: user@host:/ruta"
+        return 1
+    fi
+}
+
+ssh_options() {
+    printf '%s\n' \
+        -i "$SSH_KEY" \
+        -p "$SSH_PORT" \
+        -o BatchMode=yes \
+        -o IdentitiesOnly=yes \
+        -o StrictHostKeyChecking=accept-new
+}
+
+ssh_password_options() {
+    printf '%s\n' \
+        -p "$SSH_PORT" \
+        -o PreferredAuthentications=password,keyboard-interactive,publickey \
+        -o PubkeyAuthentication=no \
+        -o StrictHostKeyChecking=accept-new
+}
+
+local_primary_ip() {
+    local ip_addr=""
+
+    if need_cmd hostname; then
+        ip_addr="$(hostname -I 2>/dev/null | awk '{print $1}')"
+    fi
+    if [[ -z "$ip_addr" ]] && need_cmd ip; then
+        ip_addr="$(ip route get 1.1.1.1 2>/dev/null | awk '{for (i=1;i<=NF;i++) if ($i=="src") {print $(i+1); exit}}')"
+    fi
+    if [[ -z "$ip_addr" ]] && need_cmd hostname; then
+        ip_addr="$(hostname -i 2>/dev/null | awk '{print $1}')"
+    fi
+
+    echo "${ip_addr:-unknown-ip}"
+}
+
+ssh_key_comment() {
+    local local_user local_ip
+    local_user="$(id -un 2>/dev/null || whoami 2>/dev/null || echo root)"
+    local_ip="$(local_primary_ip)"
+    printf '%s-%s-%s@%s' "$APP_NAME" "$JOB_ID" "$local_user" "$local_ip"
+}
+
+remote_test() {
+    require_root
+    local job_id="${1:-}"
+    load_job "$job_id"
+
+    [[ "$REMOTE_ENABLED" == "true" ]] || die "El envio remoto no esta habilitado para $JOB_ID"
+    [[ -f "$SSH_KEY" ]] || die "No existe llave SSH: $SSH_KEY. Use: $0 remote-key $JOB_ID"
+    [[ -f "${SSH_KEY}.pub" ]] || die "No existe llave publica: ${SSH_KEY}.pub"
+    remote_parts || die "Configuracion remota invalida"
+
+    local remote_user="${REMOTE_HOST%@*}"
+    local remote_host="${REMOTE_HOST#*@}"
+    local pubkey pubkey_b64 pubkey_fp
+    pubkey="$(cat "${SSH_KEY}.pub")"
+    pubkey_b64="$(awk '{print $2}' "${SSH_KEY}.pub")"
+    pubkey_fp="$(ssh-keygen -lf "${SSH_KEY}.pub" 2>/dev/null || true)"
+
+    echo "Destino SSH / SSH target: $REMOTE_HOST"
+    echo "Usuario configurado / Configured user: $remote_user"
+    echo "Host configurado / Configured host: $remote_host"
+    echo "Llave publica / Public key: ${SSH_KEY}.pub"
+    [[ -n "$pubkey_fp" ]] && echo "Fingerprint: $pubkey_fp"
+
+    local ssh_base
+    mapfile -t ssh_base < <(ssh_options)
+
+    if ! ssh "${ssh_base[@]}" "$REMOTE_HOST" "REMOTE_PATH=$(shell_quote "$REMOTE_PATH") REMOTE_JOB_DIR=$(shell_quote "${REMOTE_PATH%/}/${JOB_ID}") PUBKEY_B64=$(shell_quote "$pubkey_b64") bash -s" <<'REMOTE_TEST_SCRIPT'
+set -eu
+echo "Usuario autenticado / Authenticated user: $(id -un)"
+echo "Home remoto / Remote home: $HOME"
+mkdir -p "$REMOTE_JOB_DIR"
+if [ -r "$HOME/.ssh/authorized_keys" ] && awk -v key="$PUBKEY_B64" 'BEGIN{found=1} $0 !~ /^[[:space:]]*#/ {for (i=1;i<=NF;i++) if ($i == key) found=0} END{exit found}' "$HOME/.ssh/authorized_keys"; then
+    echo "Clave encontrada en authorized_keys de este usuario / Key found in this user's authorized_keys"
+else
+    echo "Aviso: no se pudo confirmar la clave exacta en ~/.ssh/authorized_keys de este usuario."
+    echo "Si la conexion entro por esta llave, el servidor puede usar AuthorizedKeysCommand u otra ruta."
+fi
+echo "Ruta remota lista / Remote path ready: $REMOTE_JOB_DIR"
+REMOTE_TEST_SCRIPT
+    then
+        die "Fallo la prueba SSH. Revise usuario, host, puerto, permisos de ~/.ssh/authorized_keys y que la clave publica sea la misma."
+    fi
+
+    ok "Prueba SSH remota completada para $REMOTE_HOST"
+}
+
+install_remote_key() {
+    require_root
+    local job_id="${1:-}"
+    load_job "$job_id"
+
+    [[ "$REMOTE_ENABLED" == "true" ]] || die "El envio remoto no esta habilitado para $JOB_ID"
+    [[ -f "$SSH_KEY" ]] || generate_ssh_key "$JOB_ID"
+    [[ -f "${SSH_KEY}.pub" ]] || die "No existe llave publica: ${SSH_KEY}.pub"
+    remote_parts || die "Configuracion remota invalida"
+
+    local remote_job_dir="${REMOTE_PATH%/}/${JOB_ID}"
+    local pubkey
+    pubkey="$(cat "${SSH_KEY}.pub")"
+    local ssh_pass_opts
+    mapfile -t ssh_pass_opts < <(ssh_password_options)
+
+    echo ""
+    echo "Se instalara la llave publica en: $REMOTE_HOST"
+    echo "El cliente SSH pedira la contrasena del usuario remoto si todavia no tiene acceso por llave."
+    echo ""
+
+    if ! ssh "${ssh_pass_opts[@]}" "$REMOTE_HOST" "REMOTE_JOB_DIR=$(shell_quote "$remote_job_dir") PUBKEY=$(shell_quote "$pubkey") bash -s" <<'REMOTE_INSTALL_KEY_SCRIPT'
+set -eu
+key="$PUBKEY"
+umask 077
+mkdir -p "$HOME/.ssh"
+touch "$HOME/.ssh/authorized_keys"
+if grep -qxF "$key" "$HOME/.ssh/authorized_keys"; then
+    echo "La llave ya existia en authorized_keys."
+else
+    printf '%s\n' "$key" >> "$HOME/.ssh/authorized_keys"
+    echo "Llave agregada a authorized_keys."
+fi
+chmod 700 "$HOME/.ssh"
+chmod 600 "$HOME/.ssh/authorized_keys"
+mkdir -p "$REMOTE_JOB_DIR"
+echo "Destino remoto preparado: $REMOTE_JOB_DIR"
+REMOTE_INSTALL_KEY_SCRIPT
+    then
+        die "No se pudo instalar la llave en $REMOTE_HOST. Revise usuario, host, puerto y contrasena SSH."
+    fi
+
+    ok "Llave publica instalada en $REMOTE_HOST"
+    remote_test "$JOB_ID"
 }
 
 sync_remote() {
@@ -592,25 +742,27 @@ sync_remote() {
     fi
 
     local remote_job_dir="${REMOTE_PATH%/}/${JOB_ID}"
-    local ssh_base=(ssh -i "$SSH_KEY" -p "$SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$REMOTE_HOST")
-    local rsync_ssh="ssh -i $(shell_quote "$SSH_KEY") -p $(shell_quote "$SSH_PORT") -o BatchMode=yes -o StrictHostKeyChecking=accept-new"
+    local remote_backup_dir="${remote_job_dir}/$(basename "$backup_dir")"
+    local ssh_base
+    mapfile -t ssh_base < <(ssh_options)
+    local rsync_ssh="ssh -i $(shell_quote "$SSH_KEY") -p $(shell_quote "$SSH_PORT") -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
 
-    info "Creando destino remoto: ${REMOTE_HOST}:${remote_job_dir}"
-    if ! "${ssh_base[@]}" "mkdir -p $(shell_quote "$remote_job_dir")" >> "$CURRENT_LOG" 2>&1; then
+    info "Creando destino remoto: ${REMOTE_HOST}:${remote_backup_dir}"
+    if ! ssh "${ssh_base[@]}" "$REMOTE_HOST" "mkdir -p $(shell_quote "$remote_backup_dir")" >> "$CURRENT_LOG" 2>&1; then
         warn "No se pudo crear el destino remoto. Revise host, usuario, puerto SSH, llave y ruta remota."
         warn "Detalle en log: $CURRENT_LOG"
         return 1
     fi
 
     info "Enviando respaldo remoto con rsync"
-    if ! rsync -az --protect-args -e "$rsync_ssh" "$backup_dir/" "${REMOTE_HOST}:${remote_job_dir}/" >> "$CURRENT_LOG" 2>&1; then
+    if ! rsync -az --protect-args -e "$rsync_ssh" "$backup_dir/" "${REMOTE_HOST}:${remote_backup_dir}/" >> "$CURRENT_LOG" 2>&1; then
         warn "No se pudo enviar el respaldo remoto con rsync. El respaldo local se conserva."
         warn "Detalle en log: $CURRENT_LOG"
         return 1
     fi
 
     info "Verificando hash en remoto"
-    if ! "${ssh_base[@]}" "cd $(shell_quote "${remote_job_dir}/$(basename "$backup_dir")") && sha256sum -c $(shell_quote "$(basename "$hash_file")")" >> "$CURRENT_LOG" 2>&1; then
+    if ! ssh "${ssh_base[@]}" "$REMOTE_HOST" "cd $(shell_quote "$remote_backup_dir") && sha256sum -c $(shell_quote "$(basename "$hash_file")")" >> "$CURRENT_LOG" 2>&1; then
         warn "El respaldo remoto se envio, pero fallo la verificacion SHA256 remota."
         warn "Detalle en log: $CURRENT_LOG"
         return 1
@@ -1165,22 +1317,55 @@ generate_ssh_key() {
     load_job "$job_id"
 
     if [[ ! -f "$SSH_KEY" ]]; then
-        ssh-keygen -t ed25519 -a 100 -N "" -f "$SSH_KEY" -C "${APP_NAME}-${JOB_ID}@$(hostname -f 2>/dev/null || hostname)"
+        ssh-keygen -t ed25519 -a 100 -N "" -f "$SSH_KEY" -C "$(ssh_key_comment)"
         chmod 600 "$SSH_KEY"
         chmod 644 "${SSH_KEY}.pub"
+    else
+        warn "La llave SSH ya existe y no se regenerara: $SSH_KEY"
+        warn "Si desea un nuevo comentario con usuario/IP actual, elimine primero $SSH_KEY y ${SSH_KEY}.pub"
     fi
 
     ok "Llave privada: $SSH_KEY"
     echo ""
-    echo "Instale esta llave publica en el equipo remoto dentro de ~/.ssh/authorized_keys:"
+    echo "Instale esta llave publica en el equipo remoto dentro del ~/.ssh/authorized_keys del usuario definido en REMOTE_DEST."
+    echo "La llave publica no esta atada a un usuario local; el usuario remoto lo determina user@host."
+    echo "Puede reutilizar la misma llave publica en varios equipos o usuarios agregandola al authorized_keys correspondiente."
     echo ""
     cat "${SSH_KEY}.pub"
     echo ""
     if [[ -n "${REMOTE_DEST:-}" ]]; then
         if remote_parts; then
             echo "Prueba manual:"
-            echo "  ssh -i $SSH_KEY -p $SSH_PORT $REMOTE_HOST 'mkdir -p ${REMOTE_PATH%/}/${JOB_ID}'"
+            echo "  ssh -i $SSH_KEY -p $SSH_PORT -o IdentitiesOnly=yes $REMOTE_HOST 'mkdir -p ${REMOTE_PATH%/}/${JOB_ID}'"
+            echo "Prueba automatica:"
+            echo "  sudo $0 remote-test $JOB_ID"
+            echo "Instalar automaticamente en remoto:"
+            echo "  sudo $0 remote-install-key $JOB_ID"
         fi
+    fi
+}
+
+test_email() {
+    require_root
+    local job_id="${1:-}"
+    load_job "$job_id"
+    [[ -n "${EMAIL_TO:-}" ]] || die "EMAIL_TO no esta configurado para $JOB_ID"
+
+    ensure_base_dirs
+    CURRENT_LOG="${LOG_DIR}/${JOB_ID}-test-email-$(date +%Y%m%d-%H%M%S).log"
+    : > "$CURRENT_LOG"
+    chmod 640 "$CURRENT_LOG"
+    {
+        echo "Prueba de notificacion de ${APP_NAME}"
+        echo "JOB_ID=$JOB_ID"
+        echo "FECHA=$(date -Is)"
+        echo "DESTINO=$EMAIL_TO"
+    } >> "$CURRENT_LOG"
+
+    if send_email "[${APP_NAME}] TEST: ${JOB_ID}" "$CURRENT_LOG"; then
+        ok "Correo de prueba enviado a $EMAIL_TO"
+    else
+        die "No se pudo enviar correo de prueba. Revise mail/mailx/sendmail y el MTA local."
     fi
 }
 
@@ -1734,6 +1919,7 @@ configure_job() {
 
     if [[ "$remote_enabled" == "true" ]]; then
         generate_ssh_key "$job_id"
+        install_remote_key "$job_id"
     fi
 
     install_timers "$job_id"
@@ -1777,8 +1963,9 @@ menu() {
         echo "8) $(t restore)"
         echo "9) $(t decrypt)"
         echo "10) $(t ssh_key)"
-        echo "11) $(t delete_job)"
-        echo "12) $(t language)"
+        echo "11) $(t ssh_install)"
+        echo "12) $(t delete_job)"
+        echo "13) $(t language)"
         echo "0) $(t exit)"
         opt="$(read_input "$(t option): ")"
         case "$opt" in
@@ -1792,8 +1979,9 @@ menu() {
             8) restore_backup_interactive ;;
             9) decrypt_backup_interactive ;;
             10) generate_ssh_key "$(prompt "$(t job_id)")" ;;
-            11) delete_menu ;;
-            12) choose_language ;;
+            11) install_remote_key "$(prompt "$(t job_id)")" ;;
+            12) delete_menu ;;
+            13) choose_language ;;
             0) exit 0 ;;
             *) warn "$(t invalid)" ;;
         esac
@@ -1814,6 +2002,9 @@ main() {
         decrypt) shift; [[ $# -gt 0 ]] && decrypt_backup "$@" || decrypt_backup_interactive ;;
         timers) shift; install_timers "$@" ;;
         remote-key) shift; generate_ssh_key "$@" ;;
+        remote-install-key) shift; install_remote_key "$@" ;;
+        remote-test) shift; remote_test "$@" ;;
+        test-email) shift; test_email "$@" ;;
         delete) shift; [[ $# -gt 0 ]] && delete_job "$@" || delete_menu ;;
         menu|"") menu ;;
         help|-h|--help) usage ;;
