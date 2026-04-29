@@ -95,6 +95,7 @@ t() {
         ssh_key) [[ "$APP_LANG" == "en" ]] && echo "Show SSH public key" || echo "Mostrar llave publica SSH" ;;
         ssh_install) [[ "$APP_LANG" == "en" ]] && echo "Install SSH key on remote host" || echo "Instalar llave SSH en remoto" ;;
         delete_job) [[ "$APP_LANG" == "en" ]] && echo "Delete jobs/backups" || echo "Eliminar trabajos/respaldos" ;;
+        test_email) [[ "$APP_LANG" == "en" ]] && echo "Test email notification" || echo "Probar notificacion por email" ;;
         language) [[ "$APP_LANG" == "en" ]] && echo "Language / Idioma" || echo "Idioma / Language" ;;
         exit) [[ "$APP_LANG" == "en" ]] && echo "Exit" || echo "Salir" ;;
         option) [[ "$APP_LANG" == "en" ]] && echo "Option" || echo "Opcion" ;;
@@ -277,26 +278,57 @@ read_list() {
 send_email() {
     local subject="$1"
     local body_file="$2"
+    local send_body="$body_file"
+    local temp_body=""
+    local send_log="${CURRENT_LOG:-/dev/null}"
 
-    [[ -n "${EMAIL_TO:-}" ]] || return 0
+    if [[ -z "${EMAIL_TO:-}" ]]; then
+        warn "EMAIL_TO no esta configurado; se omite notificacion por email"
+        return 1
+    fi
+
+    [[ -f "$body_file" ]] || die "No existe cuerpo de email: $body_file"
+    mkdir -p "$RUN_DIR" 2>/dev/null || true
+    temp_body="$(mktemp "${RUN_DIR}/email-body.XXXXXX")"
+    chmod 600 "$temp_body"
+    cp "$body_file" "$temp_body"
+    send_body="$temp_body"
+
+    log "INFO" "Sending email notification to ${EMAIL_TO}: ${subject}"
 
     if need_cmd mail; then
-        mail -s "$subject" "$EMAIL_TO" < "$body_file" && return 0
-        warn "No se pudo enviar email con mail"
+        if mail -s "$subject" "$EMAIL_TO" < "$send_body" >> "$send_log" 2>&1; then
+            rm -f "$temp_body"
+            log "INFO" "Email notification accepted by mail"
+            return 0
+        fi
+        rm -f "$temp_body"
+        warn "No se pudo enviar email con mail. Revise el MTA local o pruebe: sudo $0 test-email ${JOB_ID:-JOB_ID}"
         return 1
     elif need_cmd mailx; then
-        mailx -s "$subject" "$EMAIL_TO" < "$body_file" && return 0
-        warn "No se pudo enviar email con mailx"
+        if mailx -s "$subject" "$EMAIL_TO" < "$send_body" >> "$send_log" 2>&1; then
+            rm -f "$temp_body"
+            log "INFO" "Email notification accepted by mailx"
+            return 0
+        fi
+        rm -f "$temp_body"
+        warn "No se pudo enviar email con mailx. Revise el MTA local o pruebe: sudo $0 test-email ${JOB_ID:-JOB_ID}"
         return 1
     elif need_cmd sendmail; then
-        {
+        if {
             printf 'To: %s\n' "$EMAIL_TO"
             printf 'Subject: %s\n\n' "$subject"
-            cat "$body_file"
-        } | sendmail -t && return 0
-        warn "No se pudo enviar email con sendmail"
+            cat "$send_body"
+        } | sendmail -t >> "$send_log" 2>&1; then
+            rm -f "$temp_body"
+            log "INFO" "Email notification accepted by sendmail"
+            return 0
+        fi
+        rm -f "$temp_body"
+        warn "No se pudo enviar email con sendmail. Revise el MTA local o pruebe: sudo $0 test-email ${JOB_ID:-JOB_ID}"
         return 1
     else
+        rm -f "$temp_body"
         warn "No hay mail/mailx/sendmail instalado; se omite notificacion"
         return 1
     fi
@@ -328,8 +360,14 @@ notify_result() {
         SUCCESS) [[ "$NOTIFY_SUCCESS" == "true" ]] || return 0 ;;
         *) [[ "$NOTIFY_FAILURE" == "true" ]] || return 0 ;;
     esac
+    if [[ -z "${EMAIL_TO:-}" ]]; then
+        log "INFO" "EMAIL_TO no configurado; no se envia notificacion"
+        return 0
+    fi
 
-    send_email "$subject" "$CURRENT_LOG" || true
+    if ! send_email "$subject" "$CURRENT_LOG"; then
+        log "ERROR" "Email notification failed for ${JOB_ID:-unknown} ${backup_id}"
+    fi
 }
 
 cleanup_services() {
@@ -539,11 +577,13 @@ decrypt_archive_to_temp() {
     local pass temp_pass_file
 
     need_cmd openssl || die "openssl no esta instalado"
+    [[ ! -d "$temp_archive" ]] || die "La ruta de salida es un directorio. Indique un archivo .tar.gz o deje que el programa cree el nombre automaticamente."
     pass="$(prompt_password_once)"
     temp_pass_file="$(write_temp_secret_file "$pass")"
     if ! openssl enc "-${ENCRYPTION_CIPHER}" -d -pbkdf2 -iter 200000 \
         -in "$encrypted_archive" -out "$temp_archive" -pass "file:${temp_pass_file}" >> "$CURRENT_LOG" 2>&1; then
         rm -f "$temp_pass_file"
+        [[ ! -d "$temp_archive" ]] && rm -f "$temp_archive" 2>/dev/null || true
         return 1
     fi
     rm -f "$temp_pass_file"
@@ -1070,6 +1110,7 @@ decrypt_backup() {
     archive="$(find "$backup_dir" -maxdepth 1 -name '*.tar.gz.enc' -type f | head -1)"
     [[ -f "$archive" ]] || die "No existe archivo cifrado .tar.gz.enc para $backup_id"
 
+    output_path="$(normalize_decrypt_output_path "$archive" "$output_path")"
     output_dir="$(dirname "$output_path")"
     mkdir -p "$output_dir"
 
@@ -1085,12 +1126,42 @@ decrypt_backup() {
     warn "El archivo descifrado contiene datos sensibles. Protejalo, muevalo a un lugar seguro o eliminelo cuando termine."
 }
 
-default_decrypt_output_path() {
+decrypt_output_filename() {
     local archive="$1"
     local output_name
     output_name="$(basename "$archive")"
     output_name="${output_name%.enc}"
-    printf '%s/%s\n' "${HOME:-/root}" "$output_name"
+    printf '%s\n' "$output_name"
+}
+
+default_decrypt_output_path() {
+    local archive="$1"
+    printf '%s/%s\n' "${HOME:-/root}" "$(decrypt_output_filename "$archive")"
+}
+
+normalize_decrypt_output_path() {
+    local archive="$1"
+    local requested="${2:-}"
+    local output_name output_dir
+
+    if [[ -z "$requested" ]]; then
+        default_decrypt_output_path "$archive"
+        return 0
+    fi
+
+    if [[ -d "$requested" || "$requested" == */ ]]; then
+        output_name="$(decrypt_output_filename "$archive")"
+        output_dir="${requested%/}"
+        [[ -n "$output_dir" ]] || output_dir="/"
+        if [[ "$output_dir" == "/" ]]; then
+            printf '/%s\n' "$output_name"
+        else
+            printf '%s/%s\n' "$output_dir" "$output_name"
+        fi
+        return 0
+    fi
+
+    printf '%s\n' "$requested"
 }
 
 select_local_encrypted_archive() {
@@ -1200,7 +1271,7 @@ decrypt_local_archive() {
     [[ -f "$archive" ]] || die "No existe archivo cifrado: $archive"
     [[ "$archive" == *.tar.gz.enc ]] || die "El archivo no parece un respaldo cifrado .tar.gz.enc: $archive"
 
-    output_path="${output_path:-$(default_decrypt_output_path "$archive")}"
+    output_path="$(normalize_decrypt_output_path "$archive" "$output_path")"
     [[ -n "$output_path" ]] || die "Falta ruta de salida descifrada"
 
     local backup_dir manifest cipher job_id backup_id output_dir log_id
@@ -1559,10 +1630,17 @@ test_email() {
     } >> "$CURRENT_LOG"
 
     if send_email "[${APP_NAME}] TEST: ${JOB_ID}" "$CURRENT_LOG"; then
-        ok "Correo de prueba enviado a $EMAIL_TO"
+        ok "Correo de prueba aceptado por el sistema local para $EMAIL_TO"
+        warn "Si no llega al buzon, revise relay SMTP, spam y logs del MTA local. Log: $CURRENT_LOG"
     else
         die "No se pudo enviar correo de prueba. Revise mail/mailx/sendmail y el MTA local."
     fi
+}
+
+test_email_interactive() {
+    local job_id
+    job_id="$(select_existing_job)"
+    test_email "$job_id"
 }
 
 prompt() {
@@ -2161,7 +2239,8 @@ menu() {
         echo "10) $(t ssh_key)"
         echo "11) $(t ssh_install)"
         echo "12) $(t delete_job)"
-        echo "13) $(t language)"
+        echo "13) $(t test_email)"
+        echo "14) $(t language)"
         echo "0) $(t exit)"
         opt="$(read_input "$(t option): ")"
         case "$opt" in
@@ -2177,7 +2256,8 @@ menu() {
             10) generate_ssh_key "$(prompt "$(t job_id)")" ;;
             11) install_remote_key "$(prompt "$(t job_id)")" ;;
             12) delete_menu ;;
-            13) choose_language ;;
+            13) test_email_interactive ;;
+            14) choose_language ;;
             0) exit 0 ;;
             *) warn "$(t invalid)" ;;
         esac

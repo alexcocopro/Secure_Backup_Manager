@@ -453,6 +453,8 @@ Tambien puede pasar directamente el archivo:
 sudo secure-backup-manager decrypt-local /ruta/JOB_ID-BACKUP_ID.tar.gz.enc /ruta/salida.tar.gz
 ```
 
+Si indica un directorio como salida, por ejemplo `/home/usuario/`, el programa crea automaticamente dentro de ese directorio un archivo con el mismo nombre del respaldo pero sin `.enc`.
+
 Tambien puede usar la opcion del menu `Desencriptar respaldo cifrado`. El programa permite elegir entre respaldos configurados o un directorio/archivo local, verifica el SHA256 del `.enc` si esta disponible, pide la contrasena y genera un `.tar.gz` descifrado en la ruta indicada.
 
 Advertencia: el `.tar.gz` descifrado contiene los datos originales sin cifrar. Protejalo con permisos adecuados y eliminelo cuando ya no sea necesario.
@@ -477,9 +479,33 @@ You can also pass the file directly:
 sudo secure-backup-manager decrypt-local /path/JOB_ID-BACKUP_ID.tar.gz.enc /path/output.tar.gz
 ```
 
+If you provide a directory as the output path, for example `/home/user/`, the program automatically creates a file inside that directory using the backup filename without `.enc`.
+
 You can also use the `Decrypt encrypted backup` menu option. The program lets you choose between configured backups or a local directory/file, verifies the `.enc` SHA256 if available, asks for the password, and creates a decrypted `.tar.gz` at the selected path.
 
 Warning: the decrypted `.tar.gz` contains the original data without encryption. Protect it with appropriate permissions and remove it when it is no longer needed.
+
+---
+
+## ES - Notificaciones por email
+
+Las notificaciones usan el sistema de correo local mediante `mail`, `mailx` o `sendmail`. Despues de configurar un email puede probarlo desde el menu con `Probar notificacion por email` o por consola:
+
+```bash
+sudo secure-backup-manager test-email JOB_ID
+```
+
+Si la prueba indica que el mensaje fue aceptado pero no llega al buzon, revise el MTA local, el relay SMTP, spam y los logs del sistema de correo. El detalle del intento queda en `/var/log/secure-backup-manager`.
+
+## EN - Email Notifications
+
+Notifications use the local mail system through `mail`, `mailx`, or `sendmail`. After configuring an email address, test it from the menu with `Test email notification` or from the shell:
+
+```bash
+sudo secure-backup-manager test-email JOB_ID
+```
+
+If the test says the message was accepted but it does not reach the inbox, check the local MTA, SMTP relay, spam folder, and mail system logs. Attempt details are stored in `/var/log/secure-backup-manager`.
 
 ---
 
@@ -831,6 +857,7 @@ sudo secure-backup-manager verify JOB_ID BACKUP_ID
 sudo secure-backup-manager restore JOB_ID BACKUP_ID /ruta/destino
 sudo secure-backup-manager decrypt JOB_ID BACKUP_ID /ruta/salida.tar.gz
 sudo secure-backup-manager decrypt-local /ruta/respaldo /ruta/salida.tar.gz
+sudo secure-backup-manager test-email JOB_ID
 sudo secure-backup-manager remote-key JOB_ID
 sudo secure-backup-manager delete
 sudo secure-backup-manager delete JOB_ID
@@ -850,6 +877,7 @@ sudo secure-backup-manager verify JOB_ID BACKUP_ID
 sudo secure-backup-manager restore JOB_ID BACKUP_ID /restore/path
 sudo secure-backup-manager decrypt JOB_ID BACKUP_ID /path/output.tar.gz
 sudo secure-backup-manager decrypt-local /path/backup /path/output.tar.gz
+sudo secure-backup-manager test-email JOB_ID
 sudo secure-backup-manager remote-key JOB_ID
 sudo secure-backup-manager delete
 sudo secure-backup-manager delete JOB_ID
