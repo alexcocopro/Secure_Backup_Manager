@@ -10,7 +10,7 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 umask 077
 
-VERSION="1.0.0"
+VERSION="1.0.1"
 APP_NAME="secure-backup-manager"
 CONFIG_DIR="/etc/${APP_NAME}"
 JOBS_DIR="${CONFIG_DIR}/jobs"
@@ -21,6 +21,7 @@ LOG_DIR="/var/log/${APP_NAME}"
 DEFAULT_BACKUP_ROOT="/var/backups/${APP_NAME}"
 RUN_DIR="/run/${APP_NAME}"
 SCRIPT_INSTALL_PATH="/usr/local/sbin/${APP_NAME}"
+TIMER_RANDOM_DELAY_SEC="${TIMER_RANDOM_DELAY_SEC:-0}"
 
 if [[ -t 1 ]]; then
     C_RESET=$'\033[0m'
@@ -120,25 +121,30 @@ log() {
 }
 
 usage() {
+    local cli
+    cli="$APP_NAME"
+    [[ "$(basename "$0")" == "$APP_NAME" ]] || cli="./$(basename "$0")"
+
     cat <<EOF
 ${APP_NAME} v${VERSION}
 
 Uso:
-  sudo ./${APP_NAME}.sh install
-  sudo ./${APP_NAME}.sh configure
-  sudo ./${APP_NAME}.sh run JOB_ID full|incremental
-  sudo ./${APP_NAME}.sh status [JOB_ID]
-  sudo ./${APP_NAME}.sh list [JOB_ID]
-  sudo ./${APP_NAME}.sh verify JOB_ID BACKUP_ID
-  sudo ./${APP_NAME}.sh restore JOB_ID BACKUP_ID /ruta/destino
-  sudo ./${APP_NAME}.sh decrypt JOB_ID BACKUP_ID /ruta/salida.tar.gz
-  sudo ./${APP_NAME}.sh decrypt-local /ruta/respaldo [/ruta/salida.tar.gz]
-  sudo ./${APP_NAME}.sh remote-key JOB_ID
-  sudo ./${APP_NAME}.sh remote-install-key JOB_ID
-  sudo ./${APP_NAME}.sh remote-test JOB_ID
-  sudo ./${APP_NAME}.sh test-email JOB_ID
-  sudo ./${APP_NAME}.sh delete JOB_ID
-  sudo ./${APP_NAME}.sh menu
+  sudo ${cli} install
+  sudo ${cli} configure
+  sudo ${cli} run JOB_ID full|incremental
+  sudo ${cli} status [JOB_ID]
+  sudo ${cli} list [JOB_ID]
+  sudo ${cli} verify JOB_ID BACKUP_ID
+  sudo ${cli} restore JOB_ID BACKUP_ID /ruta/destino
+  sudo ${cli} decrypt JOB_ID BACKUP_ID /ruta/salida.tar.gz
+  sudo ${cli} decrypt-local /ruta/respaldo [/ruta/salida.tar.gz]
+  sudo ${cli} remote-key JOB_ID
+  sudo ${cli} remote-install-key JOB_ID
+  sudo ${cli} remote-test JOB_ID
+  sudo ${cli} test-email JOB_ID
+  sudo ${cli} delete JOB_ID
+  sudo ${cli} timers [JOB_ID]
+  sudo ${cli} menu
 
 Ejemplos de calendario systemd:
   Diario 02:00:        *-*-* 02:00:00
@@ -207,6 +213,7 @@ install_self() {
 
     local src
     src="$(readlink -f "$0")"
+    mkdir -p "$(dirname "$SCRIPT_INSTALL_PATH")"
     install -m 750 "$src" "$SCRIPT_INSTALL_PATH"
 
     ok "Instalado en $SCRIPT_INSTALL_PATH"
@@ -1476,6 +1483,51 @@ restore_backup() {
     warn "Si el respaldo incluye dumps de base de datos, revise ${restore_to}/tmp o la ruta _db_dumps extraida y restaure manualmente con pg_restore/psql/mysql segun corresponda."
 }
 
+ensure_timer_runner() {
+    local src runner_dir
+    src="$(readlink -f "$0")"
+    runner_dir="$(dirname "$SCRIPT_INSTALL_PATH")"
+
+    mkdir -p "$runner_dir"
+
+    if [[ "$src" != "$SCRIPT_INSTALL_PATH" ]]; then
+        install -m 750 "$src" "$SCRIPT_INSTALL_PATH"
+    elif [[ ! -x "$SCRIPT_INSTALL_PATH" ]]; then
+        chmod 750 "$SCRIPT_INSTALL_PATH"
+    fi
+
+    [[ -x "$SCRIPT_INSTALL_PATH" ]] || die "No se pudo preparar el comando persistente: $SCRIPT_INSTALL_PATH"
+    echo "$SCRIPT_INSTALL_PATH"
+}
+
+validate_systemd_calendar() {
+    local label="$1"
+    local calendar="$2"
+
+    [[ -n "$calendar" ]] || die "Calendario vacio para ${label}"
+
+    if need_cmd systemd-analyze; then
+        if ! systemd-analyze calendar "$calendar" >/dev/null 2>&1; then
+            die "Calendario systemd invalido para ${label}: ${calendar}. Pruebe: systemd-analyze calendar '${calendar}'"
+        fi
+    fi
+}
+
+verify_systemd_units() {
+    if ! need_cmd systemd-analyze; then
+        return 0
+    fi
+
+    local verify_log
+    verify_log="$(mktemp)"
+    if ! systemd-analyze verify "$@" >"$verify_log" 2>&1; then
+        cat "$verify_log" >&2
+        rm -f "$verify_log"
+        die "systemd rechazo las unidades generadas; no se instalaron timers incompletos"
+    fi
+    rm -f "$verify_log"
+}
+
 install_timers() {
     require_root
     local job_id="${1:-}"
@@ -1485,36 +1537,55 @@ install_timers() {
     local full_timer="/etc/systemd/system/${APP_NAME}-${JOB_ID}-full.timer"
     local inc_service="/etc/systemd/system/${APP_NAME}-${JOB_ID}-incremental.service"
     local inc_timer="/etc/systemd/system/${APP_NAME}-${JOB_ID}-incremental.timer"
-    local runner="$SCRIPT_INSTALL_PATH"
-
-    [[ -x "$runner" ]] || runner="$(readlink -f "$0")"
+    local runner
+    validate_systemd_calendar "full" "$FULL_CALENDAR"
+    validate_systemd_calendar "incremental" "$INCREMENTAL_CALENDAR"
+    runner="$(ensure_timer_runner)"
 
     cat > "$full_service" <<EOF
 [Unit]
 Description=Full backup ${JOB_ID}
 Wants=network-online.target
-After=network-online.target
+After=local-fs.target network-online.target
+ConditionPathExists=${JOB_FILE}
 
 [Service]
 Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/
+UMask=0077
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ExecStart=${runner} run ${JOB_ID} full
+TimeoutStartSec=0
 Nice=10
 IOSchedulingClass=best-effort
 IOSchedulingPriority=7
+StandardOutput=journal
+StandardError=journal
 EOF
 
     cat > "$inc_service" <<EOF
 [Unit]
 Description=Incremental backup ${JOB_ID}
 Wants=network-online.target
-After=network-online.target
+After=local-fs.target network-online.target
+ConditionPathExists=${JOB_FILE}
 
 [Service]
 Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/
+UMask=0077
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ExecStart=${runner} run ${JOB_ID} incremental
+TimeoutStartSec=0
 Nice=10
 IOSchedulingClass=best-effort
 IOSchedulingPriority=7
+StandardOutput=journal
+StandardError=journal
 EOF
 
     cat > "$full_timer" <<EOF
@@ -1524,7 +1595,9 @@ Description=Timer full backup ${JOB_ID}
 [Timer]
 OnCalendar=${FULL_CALENDAR}
 Persistent=true
-RandomizedDelaySec=300
+AccuracySec=1min
+RandomizedDelaySec=${TIMER_RANDOM_DELAY_SEC}
+WakeSystem=true
 Unit=${APP_NAME}-${JOB_ID}-full.service
 
 [Install]
@@ -1538,16 +1611,25 @@ Description=Timer incremental backup ${JOB_ID}
 [Timer]
 OnCalendar=${INCREMENTAL_CALENDAR}
 Persistent=true
-RandomizedDelaySec=300
+AccuracySec=1min
+RandomizedDelaySec=${TIMER_RANDOM_DELAY_SEC}
+WakeSystem=true
 Unit=${APP_NAME}-${JOB_ID}-incremental.service
 
 [Install]
 WantedBy=timers.target
 EOF
 
+    verify_systemd_units "$full_service" "$inc_service" "$full_timer" "$inc_timer"
     systemctl daemon-reload
     systemctl enable --now "${APP_NAME}-${JOB_ID}-full.timer" "${APP_NAME}-${JOB_ID}-incremental.timer"
+    local timer_unit
+    for timer_unit in "${APP_NAME}-${JOB_ID}-full.timer" "${APP_NAME}-${JOB_ID}-incremental.timer"; do
+        systemctl is-enabled --quiet "$timer_unit" || die "El timer no quedo habilitado: $timer_unit"
+        systemctl is-active --quiet "$timer_unit" || die "El timer no quedo activo: $timer_unit"
+    done
     ok "Timers instalados y persistentes para $JOB_ID"
+    systemctl list-timers --all "${APP_NAME}-${JOB_ID}-*.timer" --no-pager 2>/dev/null || true
 }
 
 remove_timers() {
@@ -1576,6 +1658,42 @@ remove_timers() {
 
     systemctl daemon-reload >/dev/null 2>&1 || true
     systemctl reset-failed >/dev/null 2>&1 || true
+}
+
+install_all_timers() {
+    require_root
+    ensure_base_dirs
+
+    local job count=0
+    while IFS= read -r job; do
+        install_timers "$job"
+        ((++count))
+    done < <(list_jobs)
+
+    [[ "$count" -gt 0 ]] || die "No hay trabajos configurados / No configured jobs"
+    ok "Timers reparados/reinstalados: $count"
+}
+
+print_systemd_job_diagnostics() {
+    local job_id="$1"
+    local full_timer="${APP_NAME}-${job_id}-full.timer"
+    local inc_timer="${APP_NAME}-${job_id}-incremental.timer"
+    local full_service="${APP_NAME}-${job_id}-full.service"
+    local inc_service="${APP_NAME}-${job_id}-incremental.service"
+
+    echo "Timers systemd / systemd timers:"
+    systemctl list-timers --all "$full_timer" "$inc_timer" --no-pager 2>/dev/null || true
+    echo ""
+
+    echo "Estado systemd / systemd status:"
+    systemctl status "$full_timer" "$inc_timer" "$full_service" "$inc_service" --no-pager 2>/dev/null || true
+    echo ""
+
+    if need_cmd journalctl; then
+        echo "Ultimos eventos systemd / Recent systemd events:"
+        journalctl -u "$full_timer" -u "$inc_timer" -u "$full_service" -u "$inc_service" -n 40 --no-pager 2>/dev/null || true
+        echo ""
+    fi
 }
 
 generate_ssh_key() {
@@ -2215,8 +2333,7 @@ show_status() {
     show_job_config "$JOB_ID"
     echo "Verificacion / Verification: $(verification_summary "$BACKUP_ROOT")"
     echo ""
-    systemctl status "${APP_NAME}-${JOB_ID}-full.timer" "${APP_NAME}-${JOB_ID}-incremental.timer" --no-pager 2>/dev/null || true
-    echo ""
+    print_systemd_job_diagnostics "$JOB_ID"
     echo "Ultimos respaldos / Recent backups:"
     list_backups "$JOB_ID" | tail -20 || true
 }
@@ -2277,7 +2394,14 @@ main() {
         restore) shift; [[ $# -gt 0 ]] && restore_backup "$@" || restore_backup_interactive ;;
         decrypt) shift; [[ $# -gt 0 ]] && decrypt_backup "$@" || decrypt_backup_interactive ;;
         decrypt-local|local-decrypt) shift; decrypt_local_backup "$@" ;;
-        timers) shift; install_timers "$@" ;;
+        timers)
+            shift
+            if [[ $# -gt 0 ]]; then
+                install_timers "$@"
+            else
+                install_all_timers
+            fi
+            ;;
         remote-key) shift; generate_ssh_key "$@" ;;
         remote-install-key) shift; install_remote_key "$@" ;;
         remote-test) shift; remote_test "$@" ;;

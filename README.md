@@ -327,7 +327,7 @@ Ver un trabajo y su configuracion completa:
 sudo secure-backup-manager status JOB_ID
 ```
 
-La salida incluye rutas, retencion, base de datos, modo, calendarios, configuracion remota, SSH, email, cifrado, directorios, exclusiones, servicios y resumen de verificacion.
+La salida incluye rutas, retencion, base de datos, modo, calendarios, configuracion remota, SSH, email, cifrado, directorios, exclusiones, servicios, resumen de verificacion, estado de timers/servicios systemd y eventos recientes del journal.
 
 ## EN - Check jobs and configuration
 
@@ -343,7 +343,7 @@ Show one job and its full configuration:
 sudo secure-backup-manager status JOB_ID
 ```
 
-The output includes paths, retention, database, mode, schedules, remote setup, SSH, email, encryption, directories, exclusions, services, and verification summary.
+The output includes paths, retention, database, mode, schedules, remote setup, SSH, email, encryption, directories, exclusions, services, verification summary, systemd timer/service status, and recent journal events.
 
 ---
 
@@ -662,17 +662,25 @@ secure-backup-manager-JOB_ID-full.timer
 secure-backup-manager-JOB_ID-incremental.timer
 ```
 
+Los timers se instalan en systemd con `Persistent=true`: si el equipo estaba apagado cuando paso la hora programada, systemd ejecuta el respaldo pendiente al iniciar nuevamente, una vez que el timer este activo. El script tambien usa `WakeSystem=true` para intentar despertar el equipo desde suspension si el hardware lo permite; no puede encender un equipo completamente apagado.
+
+Reparar o reinstalar timers existentes:
+
+```bash
+sudo secure-backup-manager timers JOB_ID
+sudo secure-backup-manager timers
+```
+
 Ver timers:
 
 ```bash
 systemctl list-timers 'secure-backup-manager-*'
 ```
 
-Ver estado:
+Ver estado y ultimos eventos systemd:
 
 ```bash
-systemctl status secure-backup-manager-JOB_ID-full.timer
-systemctl status secure-backup-manager-JOB_ID-incremental.timer
+sudo secure-backup-manager status JOB_ID
 ```
 
 ## EN - systemd scheduling
@@ -684,17 +692,25 @@ secure-backup-manager-JOB_ID-full.timer
 secure-backup-manager-JOB_ID-incremental.timer
 ```
 
+Timers are installed in systemd with `Persistent=true`: if the machine was powered off when the scheduled time passed, systemd runs the missed backup on the next boot once the timer is active. The script also uses `WakeSystem=true` to try to wake from suspend when hardware supports it; it cannot power on a fully shut down machine.
+
+Repair or reinstall existing timers:
+
+```bash
+sudo secure-backup-manager timers JOB_ID
+sudo secure-backup-manager timers
+```
+
 Show timers:
 
 ```bash
 systemctl list-timers 'secure-backup-manager-*'
 ```
 
-Show status:
+Show status and recent systemd events:
 
 ```bash
-systemctl status secure-backup-manager-JOB_ID-full.timer
-systemctl status secure-backup-manager-JOB_ID-incremental.timer
+sudo secure-backup-manager status JOB_ID
 ```
 
 ---
@@ -852,6 +868,8 @@ sudo secure-backup-manager status
 sudo secure-backup-manager status JOB_ID
 sudo secure-backup-manager run JOB_ID full
 sudo secure-backup-manager run JOB_ID incremental
+sudo secure-backup-manager timers JOB_ID
+sudo secure-backup-manager timers
 sudo secure-backup-manager list JOB_ID
 sudo secure-backup-manager verify JOB_ID BACKUP_ID
 sudo secure-backup-manager restore JOB_ID BACKUP_ID /ruta/destino
@@ -872,6 +890,8 @@ sudo secure-backup-manager status
 sudo secure-backup-manager status JOB_ID
 sudo secure-backup-manager run JOB_ID full
 sudo secure-backup-manager run JOB_ID incremental
+sudo secure-backup-manager timers JOB_ID
+sudo secure-backup-manager timers
 sudo secure-backup-manager list JOB_ID
 sudo secure-backup-manager verify JOB_ID BACKUP_ID
 sudo secure-backup-manager restore JOB_ID BACKUP_ID /restore/path
